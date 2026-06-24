@@ -10,7 +10,7 @@ When in doubt, classify as PORTAL.
 OFF_TOPIC: clearly unrelated topics such as weather, cooking, sports, entertainment,
 general knowledge unrelated to education or finance.
 
-GRRETING: if the user message is a greeting (e.g. "Hi", "Hello","Good morning"), classify as GREETING.
+GREETING: if the user message is a greeting (e.g. "Hi", "Hello","Good morning"), classify as GREETING.
 
 Recent conversation:
 {context}

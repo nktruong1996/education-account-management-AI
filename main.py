@@ -93,13 +93,13 @@ async def ingest_doc(request: Request, req: UploadRequest, api_key: str = Depend
 @app.get("/ai/documents")
 @limiter.limit("100/minute")
 async def get_documents(request: Request, api_key: str = Depends(verify_api_key)):
-    return list_documents
+    return list_documents()
 
 @app.delete("/ai/documents/{document_id}")
 @limiter.limit("50/minute")
 async def remove_document(
     request: Request,
-    document_id = int,
+    document_id: int,
     api_key: str = Depends(verify_api_key)
 ):
     deleted = delete_document(document_id)
@@ -117,7 +117,7 @@ async def remove_document(
 @app.get("/ai/documents/chunks")
 @limiter.limit("100/minute")
 async def get_chunks(request: Request, api_key: str = Depends(verify_api_key)):
-    conn = get_connection
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -130,7 +130,7 @@ async def get_chunks(request: Request, api_key: str = Depends(verify_api_key)):
             CAST(c.uploaded_at as DATETIME2) AS uploaded_at,
             c.text
         FROM chunks c
-        INNER JOINdocuments d on c.document_id = d.id
+        INNER JOIN documents d on c.document_id = d.id
         ORDER BY c.uploaded_at DESC
         """
     )

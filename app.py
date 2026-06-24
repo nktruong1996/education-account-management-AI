@@ -63,7 +63,7 @@ with st.sidebar:
     
     @st.cache_data(ttl=60, show_spinner=False)
     def fetch_stats():
-        res = requests.get(f"{API_BASE}/ai/documents/stats", headers=HEADERS, timeout=2)
+        res = requests.get(f"{API_BASE}/ai/documents/stats", headers=HEADERS, timeout=5)
         res.raise_for_status()
         return res.json()
 
@@ -135,13 +135,22 @@ if prompt := st.chat_input("Ask a question about the MOE e-Service portal..."):
                 fallback = data.get("fallback", False)
                 fallback_type = data.get("fallback_type")
                 
-                # Hàm Animation gõ text từ từ
+                # Hàm Animation gõ text từ từ (Giới hạn tối đa 3 giây)
+                import math
                 full_response = ""
-                chunk_size = 1 # Mỗi lần hiện 1 ký tự
-                for i in range(0, len(answer), chunk_size):
+                
+                # Công thức: Tốc độ chuẩn 0.02s/lần cập nhật. Tối đa 150 bước (3 giây).
+                MAX_STEPS = 150
+                BASE_DELAY = 0.02
+                
+                L = len(answer)
+                chunk_size = max(1, math.ceil(L / MAX_STEPS))
+                delay = BASE_DELAY
+                
+                for i in range(0, L, chunk_size):
                     full_response += answer[i:i+chunk_size]
                     message_placeholder.markdown(full_response + '<span class="blinking-cursor">|</span>', unsafe_allow_html=True)
-                    time.sleep(0.02) # Giảm tốc độ chậm lại một chút
+                    time.sleep(delay)
                 
                 # Kết thúc animation, bỏ con trỏ
                 message_placeholder.markdown(full_response)
@@ -152,8 +161,11 @@ if prompt := st.chat_input("Ask a question about the MOE e-Service portal..."):
                         st.caption("🚫 Off-topic question detected")
                     elif fallback_type == "tier2":
                         st.caption("⚠️ Answered with low confidence")
-                        st.info(data.get("tier2_message", "Please reach out to support."))
-                        full_response += "\n\n" + data.get("tier2_message", "")
+                        # Nếu API có trả về tier2_message riêng biệt thì hiển thị, còn không thì answer đã chứa rồi
+                        tier2_msg = data.get("tier2_message")
+                        if tier2_msg:
+                            st.info(tier2_msg)
+                            full_response += "\n\n" + tier2_msg
                         
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
             else:

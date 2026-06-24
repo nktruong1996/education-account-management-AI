@@ -67,20 +67,22 @@ def calculate_content_hash(text: str) -> str:
 
 def get_document_by_hash(content_hash: str):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, doc_id, file_name, source_label, content_hash, uploaded_at
-        FROM documents
-        WHERE content_hash = ?
-        """,
-        content_hash,
-    )
+        cursor.execute(
+            """
+            SELECT id, doc_id, file_name, source_label, content_hash, uploaded_at
+            FROM documents
+            WHERE content_hash = ?
+            """,
+            content_hash,
+        )
 
-    row = cursor.fetchone()
-    conn.close()
-    return row
+        return cursor.fetchone()
+
+    finally:
+        conn.close()
 
 def insert_document(
         doc_id: str,
@@ -88,33 +90,43 @@ def insert_document(
         source_label: str,
         content_hash: str,
         uploaded_at: datetime,
-) -> str:
+) -> int:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO documents (
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO documents (
+                doc_id,
+                file_name,
+                source_label,
+                content_hash,
+                uploaded_at
+            )
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?)
+            """,
             doc_id,
             file_name,
             source_label,
             content_hash,
-            uploaded_at
+            uploaded_at,
         )
-        OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        doc_id,
-        file_name,
-        source_label,
-        content_hash,
-        uploaded_at,
-    )
 
-    document_id = cursor.fetchone()[0]
-    conn.commit()
-    conn.close()
+        document_id = cursor.fetchone()[0]
 
-    return document_id
+        conn.commit()
+
+        return document_id
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 # --- Storage ---
 def ingest_document(
@@ -136,7 +148,7 @@ def ingest_document(
         }
     
     if doc_id is None:
-        doc_id = str(uuid.uuid4)
+        doc_id = str(uuid.uuid4())
 
     if file_name is None:
         file_name = source_label or doc_id
@@ -153,41 +165,61 @@ def ingest_document(
         }
     
     uploaded_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    document_id = insert_document(
-        doc_id=doc_id,
-        file_name=file_name,
-        source_label=source_label,
-        content_hash=content_hash,
-        uploaded_at=uploaded_at,
-    )
-
     embeddings = embed_texts(chunks_text)
 
     conn = get_connection()
-    cursor = conn.cursor()
 
-    for text_chunk, embedding in zip(chunks_text, embeddings):
+    try:
+        cursor = conn.cursor()
+
         cursor.execute(
             """
-            INSERT INTO chunks (
-                chunk_id,
-                document_id,
-                text,
-                embedding,
+            INSERT INTO documents (
+                doc_id,
+                file_name,
+                source_label,
+                content_hash,
                 uploaded_at
             )
+            OUTPUT INSERTED.id
             VALUES (?, ?, ?, ?, ?)
             """,
-            str(uuid.uuid4()),
-            document_id,
-            text_chunk,
-            json.dumps(embedding),
+            doc_id,
+            file_name,
+            source_label,
+            content_hash,
             uploaded_at,
         )
-    
-    conn.commit()
-    conn.close()
+
+        document_id = cursor.fetchone()[0]
+
+        for text_chunk, embedding in zip(chunks_text, embeddings):
+            cursor.execute(
+                """
+                INSERT INTO chunks (
+                    chunk_id,
+                    document_id,
+                    text,
+                    embedding,
+                    uploaded_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                str(uuid.uuid4()),
+                document_id,
+                text_chunk,
+                json.dumps(embedding),
+                uploaded_at,
+            )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
     return {
         "doc_id": doc_id,
@@ -219,27 +251,32 @@ def recency_boost(uploaded_at: datetime, all_dates: list[datetime]) -> float:
 
 def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
     conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT
-            c.chunk_id,
-            c.text,
-            c.embedding,
-            CAST(c.uploaded_at AS DATETIME2) AS uploaded_at,
-            d.file_name,
-            d.source_label
-        FROM chunks c
-        INNER JOIN documents d on c.document_id = d.id
-        """
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                c.chunk_id,
+                c.text,
+                c.embedding,
+                CAST(c.uploaded_at AS DATETIME2) AS uploaded_at,
+                d.file_name,
+                d.source_label
+            FROM chunks c
+            INNER JOIN documents d on c.document_id = d.id
+            """
+        )
+
+        rows = cursor.fetchall()
+
+    finally:
+        conn.close()
 
     if not rows:
         return []
-    
+
     query_embedding = embed_query(query)
     all_dates = [row.uploaded_at for row in rows]
 
@@ -250,6 +287,7 @@ def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
         similarity = cosine_similarity(query_embedding, embedding)
         freshness = recency_boost(row.uploaded_at, all_dates)
         score = (1 - RECENCY_WEIGHT) * similarity + RECENCY_WEIGHT * freshness
+
         scored.append((score, row.text))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -259,33 +297,37 @@ def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
 # --- Document management ---
 def list_documents() -> list[dict]:
     conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT
-            d.id,
-            d.doc_id,
-            d.file_name,
-            d.source_label,
-            d.content_hash,
-            d.uploaded_at,
-            COUNT(c.chunk_id) AS chunk_count
-        FROM documents d
-        LEFT JOIN chunks c ON d.id = c.document_id
-        GROUP BY
-            d.id,
-            d.doc_id,
-            d.file_name,
-            d.source_label,
-            d.content_hash,
-            d.uploaded_at
-        ORDER BY d.uploaded_at DESC
-        """
-    )
+    try:
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT
+                d.id,
+                d.doc_id,
+                d.file_name,
+                d.source_label,
+                d.content_hash,
+                d.uploaded_at,
+                COUNT(c.chunk_id) AS chunk_count
+            FROM documents d
+            LEFT JOIN chunks c ON d.id = c.document_id
+            GROUP BY
+                d.id,
+                d.doc_id,
+                d.file_name,
+                d.source_label,
+                d.content_hash,
+                d.uploaded_at
+            ORDER BY d.uploaded_at DESC
+            """
+        )
+
+        rows = cursor.fetchall()
+
+    finally:
+        conn.close()
 
     return [
         {
@@ -302,36 +344,49 @@ def list_documents() -> list[dict]:
 
 def delete_document(document_id: int) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        DELETE FROM documents
-        WHERE id = ?
-        """,
-        document_id,
-    )
+    try:
+        cursor = conn.cursor()
 
-    affected = cursor.rowcount
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            DELETE FROM documents
+            WHERE id = ?
+            """,
+            document_id,
+        )
 
-    return affected > 0
+        affected = cursor.rowcount
+
+        conn.commit()
+
+        return affected > 0
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 # --- Stats ---
+
 def get_store_stats() -> dict:
     conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM chunks")
-    total_chunks = cursor.fetchone()[0]
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM documents")
-    total_documents = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM chunks")
+        total_chunks = cursor.fetchone()[0]
 
-    conn.close()
+        cursor.execute("SELECT COUNT(*) FROM documents")
+        total_documents = cursor.fetchone()[0]
 
-    return {
-        "total_chunks": total_chunks,
-        "total_documents": total_documents,
-    }
+        return {
+            "total_chunks": total_chunks,
+            "total_documents": total_documents,
+        }
+
+    finally:
+        conn.close()

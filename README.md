@@ -405,3 +405,45 @@ git add .
 git commit -m "Update README"
 git push
 ```
+
+## Hướng Dẫn Chạy Project Rút Gọn
+
+- **Tạo & kích hoạt môi trường ảo:**
+  ```powershell
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  ```
+
+- **Cài thư viện:**
+  ```powershell
+  pip install -r requirements.txt
+  ```
+
+- **Tạo file `.env` (thư mục gốc):**
+  ```env
+  AZURE_OPENAI_API_KEY="your-key"
+  INTERNAL_API_KEY="dev-secret-key"
+  ```
+
+- **Cấu hình Database (`config.py`):**
+  Chuỗi kết nối (Connection String) đã được cập nhật tài khoản: `UID=sa; PWD=12345`. (Bạn chỉ cần sửa `SERVER=.\SQLEXPRESS` thành tên server của bạn nếu cần).
+
+- **Chạy script tạo Database (SSMS -> Kết nối tới Server -> New Query):**
+  ```sql
+  CREATE DATABASE AI_assistant;
+  GO
+  USE AI_assistant;
+  GO
+  CREATE TABLE documents (id INT IDENTITY(1,1) PRIMARY KEY, doc_id NVARCHAR(100) NOT NULL, file_name NVARCHAR(255) NOT NULL, source_label NVARCHAR(255), content_hash NVARCHAR(100) NOT NULL, uploaded_at DATETIME2 NOT NULL);
+  CREATE TABLE chunks (id INT IDENTITY(1,1) PRIMARY KEY, chunk_id NVARCHAR(100) NOT NULL, document_id INT NOT NULL, text NVARCHAR(MAX) NOT NULL, embedding NVARCHAR(MAX) NOT NULL, uploaded_at DATETIME2 NOT NULL, CONSTRAINT FK_chunks_documents FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE);
+  ```
+
+- **Chạy Backend (ở Terminal 1):**
+  ```powershell
+  uvicorn main:app --reload --host 0.0.0.0 --port 8000
+  ```
+
+- **Chạy Frontend (mở Terminal 2, kích hoạt .venv trước):**
+  ```powershell
+  streamlit run app.py
+  ```

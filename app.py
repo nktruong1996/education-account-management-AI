@@ -111,49 +111,55 @@ if prompt := st.chat_input("Ask a question about the MOE e-Service portal..."):
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        message_placeholder.markdown("▌")
+        # Hiện con trỏ nhấp nháy TRONG KHI CHỜ phản hồi từ Backend
+        message_placeholder.markdown('<span class="blinking-cursor">|</span>', unsafe_allow_html=True)
         
         # Bắt buộc Streamlit cập nhật DOM (chứa tin nhắn user) ngay lập tức
         time.sleep(0.1)
         
-        full_response = ""
-        fallback_data = None
-        
         try:
-            with requests.post(
-                f"{API_BASE}/ai/faq/chat_stream",
+            # Gọi API lấy toàn bộ response về trước (không dùng stream=True nữa)
+            response = requests.post(
+                f"{API_BASE}/ai/faq/chat",
                 json={
                     "message": prompt,
                     "history": history_payload,
                     "user_id": "streamlit-user",
                 },
-                headers=HEADERS,
-                stream=True
-            ) as response:
-                if response.status_code == 200:
-                    for line in response.iter_lines():
-                        if line:
-                            data = json.loads(line)
-                            if data["type"] == "chunk":
-                                full_response += data["text"]
-                                message_placeholder.markdown(full_response + "▌")
-                            elif data["type"] == "done":
-                                fallback_data = data
-                                message_placeholder.markdown(full_response)
-                                
-                    if fallback_data and fallback_data.get("fallback"):
-                        fallback_type = fallback_data.get("fallback_type")
-                        if fallback_type == "tier1":
-                            st.caption("🚫 Off-topic question detected")
-                        elif fallback_type == "tier2":
-                            st.caption("⚠️ Answered with low confidence")
-                            st.info(fallback_data.get("tier2_message", "Please reach out to support."))
-                            full_response += "\n\n" + fallback_data.get("tier2_message", "")
-                            
-                else:
-                    st.error("Sorry, something went wrong. (Server Error)")
+                headers=HEADERS
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                answer = data.get("answer", "")
+                fallback = data.get("fallback", False)
+                fallback_type = data.get("fallback_type")
+                
+                # Hàm Animation gõ text từ từ
+                full_response = ""
+                chunk_size = 1 # Mỗi lần hiện 1 ký tự
+                for i in range(0, len(answer), chunk_size):
+                    full_response += answer[i:i+chunk_size]
+                    message_placeholder.markdown(full_response + '<span class="blinking-cursor">|</span>', unsafe_allow_html=True)
+                    time.sleep(0.02) # Giảm tốc độ chậm lại một chút
+                
+                # Kết thúc animation, bỏ con trỏ
+                message_placeholder.markdown(full_response)
+                
+                # Xử lý hiển thị fallback
+                if fallback:
+                    if fallback_type == "tier1":
+                        st.caption("🚫 Off-topic question detected")
+                    elif fallback_type == "tier2":
+                        st.caption("⚠️ Answered with low confidence")
+                        st.info(data.get("tier2_message", "Please reach out to support."))
+                        full_response += "\n\n" + data.get("tier2_message", "")
+                        
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+            else:
+                st.error("Sorry, something went wrong. (Server Error)")
+                st.session_state.messages.append({"role": "assistant", "content": "Error connecting to backend."})
+                
         except Exception as e:
             st.error(f"Could not connect to API: {e}")
-            full_response = "Error connecting to backend."
-            
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.session_state.messages.append({"role": "assistant", "content": "Error connecting to backend."})

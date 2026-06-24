@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+openai
+python-multipart
+pdfplumber
+streamlit
+pyodbc
+python-dotenv
+slowapi
+sentence-transformers
+torch

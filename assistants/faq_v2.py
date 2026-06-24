@@ -1,3 +1,4 @@
+import json
 from config import client, CHAT_MODEL, SUPPORT_CONTACT
 from models import FAQRequest, FAQResponse
 from retrieval_sql import retrieve
@@ -136,3 +137,61 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
         fallback_type=None,
         support_contact=None,
     )
+
+# --- Stream handler ---
+def stream_faq(req: FAQRequest):
+    # Trả về ngay 1 chunk rỗng để mở stream lập tức, giúp Frontend không bị block và hiện tin nhắn user ngay
+    yield json.dumps({"type": "chunk", "text": ""}) + "\n"
+
+    # 1. Intent detection
+    intent = detect_intent(req.message, req.history)
+    print(f"[debug-stream] Intent detected: {intent}")
+
+    if intent == "OFF_TOPIC":
+        yield json.dumps({"type": "chunk", "text": FAQ_TIER1_RESPONSE}) + "\n"
+        yield json.dumps({"type": "done", "fallback": True, "fallback_type": "tier1", "support_contact": None}) + "\n"
+        return
+    
+    if intent == "GREETING":
+        yield json.dumps({"type": "chunk", "text": "Hello! How can I assist you with the MOE e-Service portal today?"}) + "\n"
+        yield json.dumps({"type": "done", "fallback": False, "fallback_type": None, "support_contact": None}) + "\n"
+        return
+    
+    # 2. Retrieve relevant chunks
+    retrieval_query = build_retrieval_query(req.message, req.history)
+    chunks = retrieve(retrieval_query)
+    context = "\n\n---\n\n".join(chunks) if chunks else FAQ_NO_CONTEXT_NOTE
+
+    # 3. Build messages
+    messages = [{"role": "system", "content": FAQ_SYSTEM_PROMPT.format(context=context)}]
+    for turn in req.history[-4:]:
+        messages.append({"role": turn.role, "content": turn.content})
+    messages.append({"role": "user", "content": req.message})
+
+    # 4. LLM call with streaming
+    response_stream = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=messages,
+        max_completion_tokens=1500,
+        stream=True
+    )
+
+    full_answer = ""
+    for chunk in response_stream:
+        if chunk.choices and len(chunk.choices) > 0:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                full_answer += delta
+                yield json.dumps({"type": "chunk", "text": delta}) + "\n"
+
+    # 5. Tier 2 fallback post-check
+    if seems_uncertain(full_answer) or not chunks:
+        yield json.dumps({
+            "type": "done",
+            "fallback": True,
+            "fallback_type": "tier2",
+            "support_contact": SUPPORT_CONTACT,
+            "tier2_message": FAQ_TIER2_RESPONSE.format(support_contact=SUPPORT_CONTACT)
+        }) + "\n"
+    else:
+        yield json.dumps({"type": "done", "fallback": False, "fallback_type": None, "support_contact": None}) + "\n"

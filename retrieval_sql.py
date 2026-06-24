@@ -14,7 +14,8 @@ from config import (
     CHUNK_OVERLAP,
     TOP_K_CHUNKS,
     RECENCY_WEIGHT,
-    DB_CONNECTION_STRING
+    DB_CONNECTION_STRING,
+    MIN_SIMILARITY_THRESHOLD,
 )
 
 # --- Local Embedding Model ---
@@ -285,6 +286,10 @@ def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
     for row in rows:
         embedding = json.loads(row.embedding)
         similarity = cosine_similarity(query_embedding, embedding)
+        
+        if similarity < MIN_SIMILARITY_THRESHOLD:
+            continue
+
         freshness = recency_boost(row.uploaded_at, all_dates)
         score = (1 - RECENCY_WEIGHT) * similarity + RECENCY_WEIGHT * freshness
 

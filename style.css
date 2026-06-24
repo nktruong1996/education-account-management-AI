@@ -20,22 +20,23 @@ body, .stApp {
     border-right: 1px solid #f0f0f0 !important;
 }
 
-/* --- 3. Avatars & Assistant Message --- */
-/* Hide all default Streamlit avatars */
-[data-testid="stChatMessageAvatar"] {
-    display: none !important;
-}
-
-/* Assistant Message Bubble - transparent background */
+/* --- 3. Assistant Message Bubble --- */
 [data-testid="stChatMessage"] {
     background-color: transparent !important;
     border: none !important;
-    gap: 0 !important;
-    padding-left: 0 !important;
 }
 
-[data-testid="stChatMessage"] > div[data-testid="stMarkdownContainer"] {
-    padding-left: 0 !important;
+/* Blinking Cursor for waiting response */
+.blinking-cursor {
+    font-weight: 500;
+    font-size: 1.1em;
+    color: #111827;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
 }
 
 /* --- 4. Chat Input (Floating Pill) --- */

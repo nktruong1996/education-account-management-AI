@@ -295,7 +295,7 @@ def list_documents() -> list[dict]:
             "source_label": row.source_label,
             "content_hash": row.content_hash,
             "uploaded_at": row.uploaded_at,
-            "chunk_count": row.chunk_cont,
+            "chunk_count": row.chunk_count,
         }
         for row in rows
     ]

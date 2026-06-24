@@ -47,16 +47,29 @@ async def health_check(request: Request):
             max_completion_tokens=30,
         )
         reply = response.choices[0].message.content.strip()
+
         print(f"[health] Raw reply: {reply}")
 
         connected = "ok" in reply.lower()
+
     except Exception as e:
-        print(f"[health] OpenAI connection failed: {type(e).__name__}:{e}")
+        print(f"[health] OpenAI connection failed: {type(e).__name__}: {e}")
         connected = False
-    
-    stats = get_store_stats()
+
+    try:
+        stats = get_store_stats()
+        db_connected = True
+    except Exception as e:
+        db_connected = False
+        print(f"[health] Database connection failed: {type(e).__name__}: {e}")
+
+        stats = {
+            "total_chunks": 0,
+            "total_documents": 0,
+        }
+
     return HealthResponse(
-        status="ok" if connected else "degraded",
+        status = "ok" if connected and db_connected else "degraded",
         openai_connected=connected,
         model=CHAT_MODEL,
         total_chunks=stats["total_chunks"],
@@ -118,36 +131,40 @@ async def remove_document(
 @limiter.limit("100/minute")
 async def get_chunks(request: Request, api_key: str = Depends(verify_api_key)):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT
-            c.chunk_id,
-            d.doc_id,
-            d.file_name,
-            d.source_label,
-            CAST(c.uploaded_at as DATETIME2) AS uploaded_at,
-            c.text
-        FROM chunks c
-        INNER JOIN documents d on c.document_id = d.id
-        ORDER BY c.uploaded_at DESC
-        """
-    )
+        cursor.execute(
+            """
+            SELECT
+                c.chunk_id,
+                d.doc_id,
+                d.file_name,
+                d.source_label,
+                CAST(c.uploaded_at as DATETIME2) AS uploaded_at,
+                c.text
+            FROM chunks c
+            INNER JOIN documents d on c.document_id = d.id
+            ORDER BY c.uploaded_at DESC
+            """
+        )
 
-    rows = cursor.fetchall()
-    conn.close()
-    return [
-        {
-            "chunk_id": row.chunk_id,
-            "doc_id": row.doc_id,
-            "file_name": row.file_name,
-            "source_label": row.source_label,
-            "uploaded_at": row.uploaded_at.isoformat(),
-            "text": row.text,
-        }
-        for row in rows
-    ]
+        rows = cursor.fetchall()
+
+        return [
+            {
+                "chunk_id": row.chunk_id,
+                "doc_id": row.doc_id,
+                "file_name": row.file_name,
+                "source_label": row.source_label,
+                "uploaded_at": row.uploaded_at.isoformat(),
+                "text": row.text,
+            }
+            for row in rows
+        ]
+
+    finally:
+        conn.close()
 
 # --- Chunk stats ---
 @app.get("/ai/documents/stats")

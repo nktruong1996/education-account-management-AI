@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from fastapi import UploadFile, File
@@ -9,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from config import client, CHAT_MODEL, INTERNAL_API_KEY
 from models import FAQRequest, FAQResponse, HealthResponse, UploadRequest, UploadResponse
-from assistants.faq_v2 import handle_faq, detect_intent
+from assistants.faq_v2 import handle_faq, detect_intent, stream_faq
 from retrieval_sql import ingest_document, get_store_stats, get_connection, list_documents, delete_document
 from document_processor import extract_text_from_pdf
 
@@ -180,6 +181,16 @@ async def faq_chat(request: Request, req: FAQRequest, api_key: str = Depends(ver
         return handle_faq(req)
     except Exception as e:
         print(f"[faq] Error for user {req.user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal AI error")
+    
+# --- FAQ Assistant Stream ---
+@app.post("/ai/faq/chat_stream")
+@limiter.limit("100/minute")
+def faq_chat_stream(request: Request, req: FAQRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        return StreamingResponse(stream_faq(req), media_type="application/x-ndjson")
+    except Exception as e:
+        print(f"[faq_stream] Error for user {req.user_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal AI error")
     
 # --- Document processor ---

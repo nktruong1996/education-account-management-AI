@@ -1,0 +1,90 @@
+/* style.css - Foolproof Premium UI Overrides */
+
+/* --- 1. Typography & Global Background --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+/* Apply font safely without breaking internal Streamlit icons */
+body, .stApp {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Subtle gradient background for the main app area */
+.stApp {
+    background: linear-gradient(135deg, #ffffff 0%, #f7f8f9 100%) !important;
+}
+
+
+/* --- 2. Sidebar Styling --- */
+[data-testid="stSidebar"] {
+    background-color: #f8f9fa !important;
+    border-right: 1px solid #f0f0f0 !important;
+}
+
+/* --- 3. Avatars & Assistant Message --- */
+/* Hide all default Streamlit avatars */
+[data-testid="stChatMessageAvatar"] {
+    display: none !important;
+}
+
+/* Assistant Message Bubble - transparent background */
+[data-testid="stChatMessage"] {
+    background-color: transparent !important;
+    border: none !important;
+    gap: 0 !important;
+    padding-left: 0 !important;
+}
+
+[data-testid="stChatMessage"] > div[data-testid="stMarkdownContainer"] {
+    padding-left: 0 !important;
+}
+
+/* --- 4. Chat Input (Floating Pill) --- */
+/* Target the outer container to act as the main pill */
+div[data-testid="stChatInput"] {
+    background-color: #ffffff !important;
+    border-radius: 30px !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05) !important;
+    padding: 0px 10px !important;
+    margin-bottom: 20px !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Strip ALL backgrounds and borders from inner elements to remove the gray box */
+div[data-testid="stChatInput"] * {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Focus state for the outer pill */
+div[data-testid="stChatInput"]:focus-within {
+    border-color: #d1d5db !important;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Typography for the input */
+div[data-testid="stChatInput"] textarea {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    color: #1f2937 !important;
+    padding-top: 14px !important;
+    padding-bottom: 14px !important;
+}
+
+div[data-testid="stChatInput"] textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+
+/* --- 5. Micro-animations --- */
+@keyframes slideUpFadeIn {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.msg-animate, [data-testid="stChatMessage"] {
+    animation: slideUpFadeIn 0.4s ease-out forwards;
+}

@@ -39,6 +39,14 @@ with st.sidebar:
     st.header("👤 Test Role")
     role = st.selectbox("Current role", ["user", "admin"])
     st.header("📄 Upload Documents")
+    
+    # Định nghĩa hàm lấy stats ở đây để có thể clear() cache ngay khi upload xong
+    @st.cache_data(ttl=60, show_spinner=False)
+    def fetch_stats():
+        res = requests.get(f"{API_BASE}/ai/documents/stats", headers=HEADERS, timeout=5)
+        res.raise_for_status()
+        return res.json()
+        
     uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
     admin_only = st.checkbox("Admin-only document")
  
@@ -59,17 +67,12 @@ with st.sidebar:
                         st.warning(f"⚠️ {data.get('message', data.get('reason', 'Document was skipped.'))}")
                     else:
                         st.success(f"✅ {data.get('message', 'Document ingested successfully.')}")
+                        fetch_stats.clear() # Xoá cache ngay lập tức để dòng bên dưới tải số liệu mới
                 else:
                     st.error(f"❌ Upload failed: {response.text}")
  
     st.divider()
     st.subheader("Knowledge Base")
-    
-    @st.cache_data(ttl=60, show_spinner=False)
-    def fetch_stats():
-        res = requests.get(f"{API_BASE}/ai/documents/stats", headers=HEADERS, timeout=5)
-        res.raise_for_status()
-        return res.json()
 
     try:
         data = fetch_stats()

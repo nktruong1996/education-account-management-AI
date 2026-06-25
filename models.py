@@ -11,6 +11,7 @@ class FAQRequest(BaseModel):
     message: str
     history: list[ChatMessage]
     user_id: str
+    role: str = "user"
 
 class FAQResponse(BaseModel):
     answer: str

@@ -192,27 +192,64 @@ The code expects two tables: `documents` and `chunks`.
 A possible SQL setup script is:
 
 ```sql
+-- Recreate clean database
+CREATE DATABASE AI_assistant;
+GO
+
+USE AI_assistant;
+GO
+
+-- Documents table
 CREATE TABLE documents (
     id INT IDENTITY(1,1) PRIMARY KEY,
-    doc_id NVARCHAR(100) NOT NULL,
+    doc_id NVARCHAR(36) NOT NULL,
     file_name NVARCHAR(255) NOT NULL,
-    source_label NVARCHAR(255),
-    content_hash NVARCHAR(100) NOT NULL,
-    uploaded_at DATETIME2 NOT NULL
+    source_label NVARCHAR(255) NULL,
+    content_hash NVARCHAR(64) NOT NULL,
+    uploaded_at DATETIME2 NOT NULL,
+    admin_only BIT NOT NULL DEFAULT 0
 );
+GO
 
+-- Chunks table
 CREATE TABLE chunks (
     id INT IDENTITY(1,1) PRIMARY KEY,
-    chunk_id NVARCHAR(100) NOT NULL,
+    chunk_id NVARCHAR(36) NOT NULL,
     document_id INT NOT NULL,
     text NVARCHAR(MAX) NOT NULL,
     embedding NVARCHAR(MAX) NOT NULL,
     uploaded_at DATETIME2 NOT NULL,
+
     CONSTRAINT FK_chunks_documents
         FOREIGN KEY (document_id)
         REFERENCES documents(id)
         ON DELETE CASCADE
 );
+GO
+
+-- Helpful indexes
+CREATE INDEX IX_documents_content_hash
+ON documents(content_hash);
+GO
+
+CREATE INDEX IX_documents_admin_only
+ON documents(admin_only);
+GO
+
+CREATE INDEX IX_chunks_document_id
+ON chunks(document_id);
+GO
+
+-- Verify schema
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE';
+
+SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'documents'
+ORDER BY ORDINAL_POSITION;
+GO
 ```
 
 ## Running the Project in VS Code
@@ -430,12 +467,64 @@ git push
 
 - **Chạy script tạo Database (SSMS -> Kết nối tới Server -> New Query):**
   ```sql
+  -- Recreate clean database
   CREATE DATABASE AI_assistant;
   GO
+  
   USE AI_assistant;
   GO
-  CREATE TABLE documents (id INT IDENTITY(1,1) PRIMARY KEY, doc_id NVARCHAR(100) NOT NULL, file_name NVARCHAR(255) NOT NULL, source_label NVARCHAR(255), content_hash NVARCHAR(100) NOT NULL, uploaded_at DATETIME2 NOT NULL);
-  CREATE TABLE chunks (id INT IDENTITY(1,1) PRIMARY KEY, chunk_id NVARCHAR(100) NOT NULL, document_id INT NOT NULL, text NVARCHAR(MAX) NOT NULL, embedding NVARCHAR(MAX) NOT NULL, uploaded_at DATETIME2 NOT NULL, CONSTRAINT FK_chunks_documents FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE);
+  
+  -- Documents table
+  CREATE TABLE documents (
+      id INT IDENTITY(1,1) PRIMARY KEY,
+      doc_id NVARCHAR(36) NOT NULL,
+      file_name NVARCHAR(255) NOT NULL,
+      source_label NVARCHAR(255) NULL,
+      content_hash NVARCHAR(64) NOT NULL,
+      uploaded_at DATETIME2 NOT NULL,
+      admin_only BIT NOT NULL DEFAULT 0
+  );
+  GO
+  
+  -- Chunks table
+  CREATE TABLE chunks (
+      id INT IDENTITY(1,1) PRIMARY KEY,
+      chunk_id NVARCHAR(36) NOT NULL,
+      document_id INT NOT NULL,
+      text NVARCHAR(MAX) NOT NULL,
+      embedding NVARCHAR(MAX) NOT NULL,
+      uploaded_at DATETIME2 NOT NULL,
+  
+      CONSTRAINT FK_chunks_documents
+          FOREIGN KEY (document_id)
+          REFERENCES documents(id)
+          ON DELETE CASCADE
+  );
+  GO
+  
+  -- Helpful indexes
+  CREATE INDEX IX_documents_content_hash
+  ON documents(content_hash);
+  GO
+  
+  CREATE INDEX IX_documents_admin_only
+  ON documents(admin_only);
+  GO
+  
+  CREATE INDEX IX_chunks_document_id
+  ON chunks(document_id);
+  GO
+  
+  -- Verify schema
+  SELECT TABLE_NAME
+  FROM INFORMATION_SCHEMA.TABLES
+  WHERE TABLE_TYPE = 'BASE TABLE';
+  
+  SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'documents'
+  ORDER BY ORDINAL_POSITION;
+  GO
   ```
 
 - **Chạy Backend (ở Terminal 1):**

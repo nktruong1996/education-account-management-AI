@@ -28,8 +28,8 @@ def detect_intent(message: str, history: list = []) -> str:
     
     raw = response.choices[0].message.content.strip().upper()
     print(f"[intent raw] {repr(raw)}")
-
-    if raw in ("PORTAL", "OFF_TOPIC", "GREETING"):
+    
+    if raw in ("PORTAL", "OFF_TOPIC", "GREETING", "ACCOUNT_INFO"):
         return raw
     
     print(f"[intent] Unexpected output '{raw}', defaulting to OFF_TOPIC")
@@ -81,6 +81,19 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
             answer="Hello! How can I assist you with the MOE e-Service portal today?",
             fallback=False,
             fallback_type=None,
+            support_contact=None,
+        )
+    
+    if intent == "ACCOUNT_INFO":
+        return FAQResponse(
+            answer=(
+                "I can't access or disclose personal account information or sensitive personal data, "
+                "whether about you or another person. If you're trying to view your own MOE e-Service "
+                "records, please sign in to the MOE e-Service portal. For someone else's information, "
+                "please contact the appropriate person or organisation directly."
+            ),
+            fallback=True,
+            fallback_type="account_info",
             support_contact=None,
         )
     

@@ -1,11 +1,13 @@
 # --- Intent Detection ---
-INTENT_PROMPT = """ You are an intent classifier for a Singapore MOD e-service portal chatbot.
-Classify the user message as either GREETING, PORTAL or OFF_TOPIC.
+INTENT_PROMPT = """ You are an intent classifier for a Singapore MOE e-service portal chatbot.
+Classify the user message as either GREETING, PORTAL, ACCOUNT_INFO or OFF_TOPIC.
 
 PORTAL : any question that could reasonably relate to education, schools, student finances,
 government assistance schemes, loans, fees, subsidies, form applications, portal navigation,
 or any term or concept that might appear in MOE or education-related documents.
 When in doubt, classify as PORTAL.
+
+ACCOUNT_INFO: questions asking for the user's or another person's private account records, application status, payment status, account balance, submitted forms, uploaded documents, NRIC, personal profile, or other personal portal data.
 
 OFF_TOPIC: clearly unrelated topics such as weather, cooking, sports, entertainment,
 general knowledge unrelated to education or finance.
@@ -15,7 +17,7 @@ GREETING: if the user message is a greeting (e.g. "Hi", "Hello","Good morning"),
 Recent conversation:
 {context}
 
-Classify this message. Reply with PORTAL, GREETING, or OFF_TOPIC only, nothing else.
+Classify this message. Reply with PORTAL, GREETING, ACCOUNT_INFO or OFF_TOPIC only, nothing else.
 User: "{message}"
 """
 
@@ -46,7 +48,7 @@ FAQ_NO_CONTEXT_NOTE = "(No relevant documents found in knowledge base for this q
 
 # --- Fallback responses ---
 FAQ_TIER1_RESPONSE = (
-    "I'm only able to assist with questions about the MOE e-Service portal."
+    "I'm only able to assist with questions about the MOE e-Service portal. "
     "For other topics, please consult the appropriate resource."
 )
 

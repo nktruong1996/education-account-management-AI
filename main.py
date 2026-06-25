@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from config import client, CHAT_MODEL, INTERNAL_API_KEY
 from models import FAQRequest, FAQResponse, HealthResponse, UploadRequest, UploadResponse
-from assistants.faq_v2 import handle_faq, detect_intent, stream_faq
+from assistants.faq_v2 import handle_faq, detect_intent
 from retrieval_sql import ingest_document, get_store_stats, get_connection, list_documents, delete_document
 from document_processor import extract_text_from_pdf
 
@@ -196,7 +196,12 @@ def faq_chat_stream(request: Request, req: FAQRequest, api_key: str = Depends(ve
 # --- Document processor ---
 @app.post("/ai/documents/upload", response_model=UploadResponse)
 @limiter.limit("50/minute")
-async def upload_doc(request: Request, file: UploadFile = File(...), api_key: str = Depends(verify_api_key)):
+async def upload_doc(
+    request: Request,
+    file: UploadFile = File(...),
+    admin_only: bool = Form(False),
+    api_key: str = Depends(verify_api_key)
+):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported for now")
     
@@ -209,7 +214,8 @@ async def upload_doc(request: Request, file: UploadFile = File(...), api_key: st
     result = ingest_document(
         text=text,
         source_label=file.filename,
-        file_name=file.filename
+        file_name=file.filename,
+        admin_only=admin_only
     )
 
     if result.get("skipped"):
@@ -228,4 +234,4 @@ async def upload_doc(request: Request, file: UploadFile = File(...), api_key: st
 # --- Dev runner ---
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main_access:app", host="0.0.0.0", port=8000, reload=True)

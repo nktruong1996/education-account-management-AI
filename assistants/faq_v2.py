@@ -35,16 +35,39 @@ def detect_intent(message: str, history: list = []) -> str:
     print(f"[intent] Unexpected output '{raw}', defaulting to OFF_TOPIC")
     return "OFF_TOPIC"
 
-# --- Build retrieval query from recent user messages only ---
-def build_retrieval_query(message: str, history: list) -> str:
-    recent_user_messages = [
-        turn.content.strip()
-        for turn in history[-4:]
-        if turn.role == "user" and turn.content.strip()
-    ]
+# # --- Build retrieval query from recent user messages only ---
+# def build_retrieval_query(message: str, history: list) -> str:
+#     recent_user_messages = [
+#         turn.content.strip()
+#         for turn in history[-4:]
+#         if turn.role == "user" and turn.content.strip()
+#     ]
 
-    retrieval_parts = recent_user_messages + [message.strip()]
-    return " ".join(retrieval_parts)
+#     retrieval_parts = recent_user_messages + [message.strip()]
+#     return " ".join(retrieval_parts)
+
+
+# --- Get last message from assistant
+def get_last_assistant_message(history:list) -> str | None:
+    for turn in reversed(history):
+        if turn.role == "assistant":
+            return turn.content
+    return None
+
+# --- Build context query ---
+def build_contextual_query(message:str, history: list) -> str:
+    last_assistant = get_last_assistant_message(history)
+
+    if not last_assistant:
+        return message
+    
+    return f"""
+    Previous assistant answer:
+    {last_assistant}
+
+    Current user question:
+    {message}
+    """.strip()
 
 # --- Confidence check ---
 UNCERTAINTY_PHRASES = (
@@ -85,12 +108,15 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
         )
     
     # 2. Retrieve relevant chunks
-    retrieval_query = build_retrieval_query(req.message, req.history)
+    retrieval_query = build_contextual_query(req.message, req.history)
+
+    print(f"[debug] User role: {req.role}")
 
     print(f"[debug] Retrieval query: {retrieval_query}")
 
-    chunks = retrieve(retrieval_query)
+    chunks = retrieve(retrieval_query, req.role)
 
+    
     print(f"[debug] Retrieved {len(chunks)} chunks for contextual query")
     for i,c in enumerate(chunks):
         print(f"[debug] Chunk {i}: {c[:100]}")

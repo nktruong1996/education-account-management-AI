@@ -73,7 +73,7 @@ def get_document_by_hash(content_hash: str):
 
         cursor.execute(
             """
-            SELECT id, doc_id, file_name, source_label, content_hash, uploaded_at
+            SELECT id, doc_id, file_name, source_label, content_hash, uploaded_at, admin_only
             FROM documents
             WHERE content_hash = ?
             """,
@@ -85,56 +85,13 @@ def get_document_by_hash(content_hash: str):
     finally:
         conn.close()
 
-def insert_document(
-        doc_id: str,
-        file_name: str,
-        source_label: str,
-        content_hash: str,
-        uploaded_at: datetime,
-) -> int:
-    conn = get_connection()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO documents (
-                doc_id,
-                file_name,
-                source_label,
-                content_hash,
-                uploaded_at
-            )
-            OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            doc_id,
-            file_name,
-            source_label,
-            content_hash,
-            uploaded_at,
-        )
-
-        document_id = cursor.fetchone()[0]
-
-        conn.commit()
-
-        return document_id
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        conn.close()
-
 # --- Storage ---
 def ingest_document(
         text: str,
         doc_id: str | None = None,
         source_label: str = "",
-        file_name: str | None = None
+        file_name: str | None = None,
+        admin_only: bool = False,
 ) -> dict:
     content_hash = calculate_content_hash(text)
 
@@ -180,16 +137,18 @@ def ingest_document(
                 file_name,
                 source_label,
                 content_hash,
-                uploaded_at
+                uploaded_at,
+                admin_only
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             doc_id,
             file_name,
             source_label,
             content_hash,
             uploaded_at,
+            1 if admin_only else 0,
         )
 
         document_id = cursor.fetchone()[0]
@@ -250,7 +209,8 @@ def recency_boost(uploaded_at: datetime, all_dates: list[datetime]) -> float:
 
     return (uploaded_at.timestamp() - min_ts) / span
 
-def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
+def retrieve(query: str, role: str = "user", top_k: int = TOP_K_CHUNKS) -> list[str]:
+    is_admin = (role.lower() == "admin")
     conn = get_connection()
 
     try:
@@ -264,10 +224,13 @@ def retrieve(query: str, top_k: int = TOP_K_CHUNKS) -> list[str]:
                 c.embedding,
                 CAST(c.uploaded_at AS DATETIME2) AS uploaded_at,
                 d.file_name,
-                d.source_label
+                d.source_label,
+                d.admin_only
             FROM chunks c
             INNER JOIN documents d on c.document_id = d.id
-            """
+            WHERE (? = 1 OR d.admin_only = 0)
+            """,
+            1 if is_admin else 0,
         )
 
         rows = cursor.fetchall()
@@ -315,6 +278,7 @@ def list_documents() -> list[dict]:
                 d.source_label,
                 d.content_hash,
                 d.uploaded_at,
+                d.admin_only,
                 COUNT(c.chunk_id) AS chunk_count
             FROM documents d
             LEFT JOIN chunks c ON d.id = c.document_id
@@ -324,7 +288,8 @@ def list_documents() -> list[dict]:
                 d.file_name,
                 d.source_label,
                 d.content_hash,
-                d.uploaded_at
+                d.uploaded_at,
+                d.admin_only
             ORDER BY d.uploaded_at DESC
             """
         )
@@ -342,6 +307,7 @@ def list_documents() -> list[dict]:
             "source_label": row.source_label,
             "content_hash": row.content_hash,
             "uploaded_at": row.uploaded_at,
+            "admin_only": bool(row.admin_only),
             "chunk_count": row.chunk_count,
         }
         for row in rows

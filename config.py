@@ -24,7 +24,7 @@ CHUNK_SIZE = 200
 CHUNK_OVERLAP = 60
 TOP_K_CHUNKS = 4
 RECENCY_WEIGHT = 0.15
-MIN_SIMILARITY_THRESHOLD = 0.6
+MIN_SIMILARITY_THRESHOLD = 0.3
 
 # --- Memory ---
 MAX_HISTORY_TURNS = 10
@@ -38,8 +38,8 @@ INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-secret-key")
 # --- Database ---
 DB_CONNECTION_STRING = (
     "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=.\\SQLEXPRESS;"
+    "SERVER=(localdb)\\MSSQLLocalDB;"
     "DATABASE=AI_assistant;"
-    "Trusted_Connection=yes;"
+    # "Integrated Security=SSPI;"
     "TrustServerCertificate=yes;"
 )

@@ -36,8 +36,11 @@ st.title("🎓 MOE e-Service FAQ Assistant")
 # ---------------------------------------------------------------------------
  
 with st.sidebar:
+    st.header("👤 Test Role")
+    role = st.selectbox("Current role", ["user", "admin"])
     st.header("📄 Upload Documents")
     uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
+    admin_only = st.checkbox("Admin-only document")
  
     if uploaded_file:
         if st.button("Ingest Document"):
@@ -45,6 +48,7 @@ with st.sidebar:
                 response = requests.post(
                     f"{API_BASE}/ai/documents/upload",
                     files={"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")},
+                    data={"admin_only": str(admin_only).lower()},
                     headers=HEADERS,
                 )
  
@@ -125,6 +129,7 @@ if prompt := st.chat_input("Ask a question about the MOE e-Service portal..."):
                     "message": prompt,
                     "history": history_payload,
                     "user_id": "streamlit-user",
+                    "role": role,
                 },
                 headers=HEADERS
             )

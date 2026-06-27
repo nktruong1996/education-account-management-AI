@@ -36,10 +36,10 @@ SUPPORT_CONTACT = "support@moe-eservice.gov.sg"
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-secret-key")
 
 # --- Database ---
-DB_CONNECTION_STRING = (
+DB_CONNECTION_STRING = os.getenv("DB_CONNECTION_STRING", (
     "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=(localdb)\\MSSQLLocalDB;"
+    "SERVER=DESKTOP-RC0R4GG\\MYSQLSERVER;"
     "DATABASE=AI_assistant;"
-    # "Integrated Security=SSPI;"
+    "Trusted_Connection=yes;"
     "TrustServerCertificate=yes;"
-)
+))

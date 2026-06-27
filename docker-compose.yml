@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sql_server_db
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SA_PASSWORD}
+      - MSSQL_MEMORY_LIMIT_MB=2048
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlvolume:/var/opt/mssql
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: fastapi_backend
+    environment:
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-secret-key}
+      - DB_CONNECTION_STRING=DRIVER={ODBC Driver 18 for SQL Server};SERVER=db;DATABASE=AI_assistant;UID=sa;PWD=${SA_PASSWORD};TrustServerCertificate=yes;
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  sqlvolume:

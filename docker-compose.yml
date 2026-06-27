@@ -15,9 +15,7 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: .
-      dockerfile: backend.Dockerfile
+    image: dothanhdat3009/education-ai-backend:latest
     container_name: fastapi_backend
     environment:
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
@@ -27,6 +25,14 @@ services:
       - "8000:8000"
     depends_on:
       - db
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 fastapi_backend
     restart: unless-stopped
 
 volumes:

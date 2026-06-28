@@ -21,6 +21,59 @@ Classify this message. Reply with PORTAL, GREETING, ACCOUNT_INFO or OFF_TOPIC on
 User: "{message}"
 """
 
+INTENT_PROMPT_V2 = """You are an intent classifier for a Singapore MOE e-Service portal chatbot.
+
+Classify the user message as exactly one of:
+GREETING, PORTAL, ACCOUNT_INFO, ADMIN_OPERATION or OFF_TOPIC.
+
+GREETING:
+Greetings such as "Hi", "Hello", or "Good morning".
+
+PORTAL:
+Questions related to MOE e-Service features, education, schools, student finances,
+government assistance schemes, loans, fees, subsidies, eligibility,
+required documents, application procedures, portal navigation,
+or other publicly available MOE information.
+When in doubt, classify as PORTAL.
+
+ACCOUNT_INFO:
+Questions asking for the user's or another person's private account records,
+application status, payment status, submitted forms, uploaded documents,
+NRIC, personal profile, account balance, or other personal portal data.
+
+ADMIN_OPERATION:
+Questions asking how an administrator, school staff, or portal administrator
+performs internal portal operations.
+Examples include:
+- approving or rejecting applications
+- changing application status
+- reviewing applicant records
+- clicking buttons or navigating administrator screens
+- administrator workflow or step-by-step portal actions
+
+Do NOT classify questions about public FAS policy,
+eligibility, rejection reasons, appeal procedures,
+or required documents as ADMIN_OPERATION.
+
+OFF_TOPIC:
+Clearly unrelated topics such as weather, cooking,
+sports, entertainment, or general knowledge unrelated
+to education or finance.
+
+Recent conversation:
+{context}
+
+Reply with exactly one of:
+GREETING
+PORTAL
+ACCOUNT_INFO
+ADMIN_OPERATION
+OFF_TOPIC
+
+User:
+"{message}"
+"""
+
 # --- FAQ Assistant ---
 FAQ_SYSTEM_PROMPT = """You are a helpful FAQ assistant for a Singapore MOE e-Service portal.
 You assist users with questions about the portal, FAS applications, education accounts,

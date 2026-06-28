@@ -3,7 +3,7 @@ from query_expansions import build_expanded_query
 from config import client, CHAT_MODEL, SUPPORT_CONTACT
 from models import FAQRequest, FAQResponse
 from retrieval_sql import retrieve
-from prompts import INTENT_PROMPT, FAQ_SYSTEM_PROMPT, FAQ_NO_CONTEXT_NOTE, FAQ_TIER1_RESPONSE, FAQ_TIER2_RESPONSE
+from prompts import INTENT_PROMPT, FAQ_SYSTEM_PROMPT, FAQ_NO_CONTEXT_NOTE, FAQ_TIER1_RESPONSE, FAQ_TIER2_RESPONSE, INTENT_PROMPT_V2
 
 # --- Intent detection ---
 def detect_intent(message: str, history: list = []) -> str:
@@ -12,7 +12,7 @@ def detect_intent(message: str, history: list = []) -> str:
     if history:
         last_turns = history[-4:]
         context = "Recent conversation:\n" + "\n".join(f"{t.role}: {t.content}" for t in last_turns)
-    prompt = INTENT_PROMPT.format(message=message, context=context)
+    prompt = INTENT_PROMPT_V2.format(message=message, context=context)
 
     response = client.chat.completions.create(
         model = CHAT_MODEL,
@@ -30,7 +30,7 @@ def detect_intent(message: str, history: list = []) -> str:
     raw = response.choices[0].message.content.strip().upper()
     print(f"[intent raw] {repr(raw)}")
     
-    if raw in ("PORTAL", "OFF_TOPIC", "GREETING", "ACCOUNT_INFO"):
+    if raw in ("PORTAL", "OFF_TOPIC", "GREETING", "ACCOUNT_INFO", "ADMIN_OPERATION"):
         return raw
     
     print(f"[intent] Unexpected output '{raw}', defaulting to OFF_TOPIC")
@@ -62,35 +62,9 @@ def seems_uncertain(answer: str) -> bool:
     lower = answer.lower()
     return any(phrase in lower for phrase in UNCERTAINTY_PHRASES)
 
-# --- Restricted role access ---
 ADMIN_OPERATION_RESPONSE = (
-    "I can’t provide school/admin portal operation steps as you are granted access to such information. "
+    "I cannot provide school/admin portal operation steps as you do not have permissions to know these informations."
 )
-
-ADMIN_OPERATION_KEYWORDS = [
-    "admin",
-    "school admin",
-    "administrator",
-    "approve",
-    "approved",
-    "reject",
-    "rejected",
-    "application status",
-    "review application",
-    "fas application review",
-    "fas queue",
-    "applicant record",
-    "step-by-step ui",
-    "ui actions",
-    "which button",
-    "which menu",
-    "mark an application",
-]
-
-
-def is_admin_operation_question(text: str) -> bool:
-    normalized = text.lower()
-    return any(keyword in normalized for keyword in ADMIN_OPERATION_KEYWORDS)
 
 # --- Main handler ---
 def handle_faq(req: FAQRequest) -> FAQResponse:
@@ -127,13 +101,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
             support_contact=None,
         )
     
-    # 2. Role-based guard for admin-only portal operations
-    conversation_text = " ".join(
-        [turn.content for turn in req.history[-4:]]
-        + [req.message]
-    )
-
-    if req.role.lower() != "admin" and is_admin_operation_question(conversation_text):
+    if intent == "ADMIN_OPERATION" and req.role.lower() != "admin":
         return FAQResponse(
             answer=ADMIN_OPERATION_RESPONSE,
             fallback=True,
@@ -141,7 +109,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
             support_contact=None,
         )
     
-    # 3. Retrieve relevant chunks
+    # 2. Retrieve relevant chunks
     retrieval_query = build_retrieval_query(req.message, req.history)
 
     print(f"[debug] User role: {req.role}")
@@ -156,7 +124,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
         print(f"[debug] Chunk {i}: {c[:100]}")
     context = "\n\n---\n\n".join(chunks) if chunks else FAQ_NO_CONTEXT_NOTE
 
-    # 4. Build messages
+    # 3. Build messages
     messages = [{"role": "system", "content": FAQ_SYSTEM_PROMPT.format(context=context)}]
 
     for turn in req.history[-4:]:
@@ -164,7 +132,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
 
     messages.append({"role": "user", "content": req.message})
 
-    # 5. LLM call
+    # 4. LLM call
     response = client.chat.completions.create(
         model = CHAT_MODEL,
         messages=messages,
@@ -182,7 +150,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
     print(f"[debug] seems_uncertain: {seems_uncertain(answer)}")
     print(f"[debug] chunks found: {bool(chunks)}")
 
-    # 6. Tier 2 fallback
+    # 5. Tier 2 fallback
     if seems_uncertain(answer) or not chunks:
         return FAQResponse(
             answer=FAQ_TIER2_RESPONSE.format(support_contact=SUPPORT_CONTACT),

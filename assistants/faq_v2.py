@@ -62,6 +62,36 @@ def seems_uncertain(answer: str) -> bool:
     lower = answer.lower()
     return any(phrase in lower for phrase in UNCERTAINTY_PHRASES)
 
+# --- Restricted role access ---
+ADMIN_OPERATION_RESPONSE = (
+    "I can’t provide school/admin portal operation steps as you are granted access to such information. "
+)
+
+ADMIN_OPERATION_KEYWORDS = [
+    "admin",
+    "school admin",
+    "administrator",
+    "approve",
+    "approved",
+    "reject",
+    "rejected",
+    "application status",
+    "review application",
+    "fas application review",
+    "fas queue",
+    "applicant record",
+    "step-by-step ui",
+    "ui actions",
+    "which button",
+    "which menu",
+    "mark an application",
+]
+
+
+def is_admin_operation_question(text: str) -> bool:
+    normalized = text.lower()
+    return any(keyword in normalized for keyword in ADMIN_OPERATION_KEYWORDS)
+
 # --- Main handler ---
 def handle_faq(req: FAQRequest) -> FAQResponse:
     # 1. Intent detection
@@ -97,7 +127,21 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
             support_contact=None,
         )
     
-    # 2. Retrieve relevant chunks
+    # 2. Role-based guard for admin-only portal operations
+    conversation_text = " ".join(
+        [turn.content for turn in req.history[-4:]]
+        + [req.message]
+    )
+
+    if req.role.lower() != "admin" and is_admin_operation_question(conversation_text):
+        return FAQResponse(
+            answer=ADMIN_OPERATION_RESPONSE,
+            fallback=True,
+            fallback_type="admin_only",
+            support_contact=None,
+        )
+    
+    # 3. Retrieve relevant chunks
     retrieval_query = build_retrieval_query(req.message, req.history)
 
     print(f"[debug] User role: {req.role}")
@@ -112,7 +156,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
         print(f"[debug] Chunk {i}: {c[:100]}")
     context = "\n\n---\n\n".join(chunks) if chunks else FAQ_NO_CONTEXT_NOTE
 
-    # 3. Build messages
+    # 4. Build messages
     messages = [{"role": "system", "content": FAQ_SYSTEM_PROMPT.format(context=context)}]
 
     for turn in req.history[-4:]:
@@ -120,7 +164,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
 
     messages.append({"role": "user", "content": req.message})
 
-    # 4. LLM call
+    # 5. LLM call
     response = client.chat.completions.create(
         model = CHAT_MODEL,
         messages=messages,
@@ -138,7 +182,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
     print(f"[debug] seems_uncertain: {seems_uncertain(answer)}")
     print(f"[debug] chunks found: {bool(chunks)}")
 
-    # 5. Tier 2 fallback
+    # 6. Tier 2 fallback
     if seems_uncertain(answer) or not chunks:
         return FAQResponse(
             answer=FAQ_TIER2_RESPONSE.format(support_contact=SUPPORT_CONTACT),

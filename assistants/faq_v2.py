@@ -64,9 +64,7 @@ def seems_uncertain(answer: str) -> bool:
 
 # --- Restricted role access ---
 ADMIN_OPERATION_RESPONSE = (
-    "I can’t provide school/admin portal operation steps while you are using the user role. "
-    "Please switch to an admin role if you need admin workflow guidance, or ask about public "
-    "FAS policy, eligibility, or required documents instead."
+    "I can’t provide school/admin portal operation steps as you are granted access to such information. "
 )
 
 ADMIN_OPERATION_KEYWORDS = [

@@ -16,7 +16,7 @@ class FAQRequest(BaseModel):
 class FAQResponse(BaseModel):
     answer: str
     fallback: bool
-    fallback_type: Optional[Literal["tier1", "tier2", "account_info"]] = None
+    fallback_type: Optional[Literal["tier1", "tier2", "account_info", "admin_only"]] = None
     support_contact: Optional[str] = None
 
 # --- FAS ---

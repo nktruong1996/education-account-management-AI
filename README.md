@@ -1,12 +1,12 @@
 # Education Account Management AI
 
-This project is a prototype AI assistant for an MOE-style e-Service portal. It provides a Streamlit chat interface and a FastAPI backend that can answer FAQ-style questions using uploaded PDF documents as a knowledge base.
+This project is a prototype AI assistant for an SFS-style e-Service portal. It provides a Streamlit chat interface and a FastAPI backend that can answer FAQ-style questions using uploaded PDF documents as a knowledge base.
 
 The system uses Azure OpenAI for chat responses and a local Sentence Transformers embedding model for document retrieval. Uploaded documents are processed, chunked, embedded, and stored in a SQL Server database.
 
 ## Features
 
-- FAQ chatbot for MOE/e-Service related questions
+- FAQ chatbot for SFS/e-Service related questions
 - Intent detection for portal questions, greetings, and off-topic questions
 - PDF document upload through the Streamlit UI
 - Text extraction from uploaded PDFs
@@ -367,7 +367,7 @@ http://localhost:8501
 2. Start the Streamlit frontend.
 3. Upload a PDF from the sidebar.
 4. Click `Ingest Document`.
-5. Ask questions related to the uploaded document or MOE e-Service portal.
+5. Ask questions related to the uploaded document or SFS e-Service portal.
 
 ## Recommended Git Ignore Rules
 

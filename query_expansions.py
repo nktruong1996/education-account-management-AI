@@ -4,7 +4,7 @@ QUERY_EXPANSIONS = {
     # Abbreviations
     "fas": [
         "Financial Assistance Scheme",
-        "MOE Financial Assistance Scheme",
+        "SFS Financial Assistance Scheme",
     ],
     "jc": [
         "Junior College",

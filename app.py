@@ -4,10 +4,10 @@ import json
 import time
 from config import INTERNAL_API_KEY
  
-API_BASE = "http://127.0.0.1:8000"
+API_BASE = "http://127.0.0.1:8001"
 HEADERS = {"X-API-Key": INTERNAL_API_KEY}
  
-st.set_page_config(page_title="MOE e-Service FAQ Assistant", page_icon="🎓")
+st.set_page_config(page_title="SFS e-Service FAQ Assistant", page_icon="🎓")
 
 # Inject custom CSS for Claude-like UI
 import os
@@ -29,7 +29,7 @@ def render_user_message(text):
     """
     st.markdown(html, unsafe_allow_html=True)
 
-st.title("🎓 MOE e-Service FAQ Assistant")
+st.title("🎓 SFS e-Service FAQ Assistant")
  
 # ---------------------------------------------------------------------------
 # Sidebar — document upload
@@ -105,7 +105,7 @@ for msg in st.session_state.messages:
 # Chat input
 # ---------------------------------------------------------------------------
  
-if prompt := st.chat_input("Ask a question about the MOE e-Service portal..."):
+if prompt := st.chat_input("Ask a question about the SFS e-Service portal..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     render_user_message(prompt)
     

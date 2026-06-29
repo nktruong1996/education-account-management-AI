@@ -30,7 +30,7 @@ MIN_SIMILARITY_THRESHOLD = 0.3
 MAX_HISTORY_TURNS = 10
 
 # --- Fallback ---
-SUPPORT_CONTACT = "support@moe-eservice.gov.sg"
+SUPPORT_CONTACT = "support@sfs-eservice.gov.sg"
 
 # --- Internal Auth ---
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-secret-key")

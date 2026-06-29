@@ -17,7 +17,7 @@ def detect_intent(message: str, history: list = []) -> str:
     response = client.chat.completions.create(
         model = CHAT_MODEL,
         messages = [{"role": "user", "content": prompt}],
-        max_completion_tokens=200,
+        max_completion_tokens=1000,
     )
     if hasattr(response,"usage") and response.usage:
         print(
@@ -82,7 +82,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
     
     if intent == "GREETING":
         return FAQResponse(
-            answer="Hello! How can I assist you with the MOE e-Service portal today?",
+            answer="Hello! How can I assist you with the SFS e-Service portal today?",
             fallback=False,
             fallback_type=None,
             support_contact=None,
@@ -92,8 +92,8 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
         return FAQResponse(
             answer=(
                 "I can't access or disclose personal account information or sensitive personal data, "
-                "whether about you or another person. If you're trying to view your own MOE e-Service "
-                "records, please sign in to the MOE e-Service portal. For someone else's information, "
+                "whether about you or another person. If you're trying to view your own SFS e-Service "
+                "records, please sign in to the SFS e-Service portal. For someone else's information, "
                 "please contact the appropriate person or organisation directly."
             ),
             fallback=True,
@@ -181,15 +181,15 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
 #         return
     
 #     if intent == "GREETING":
-#         yield json.dumps({"type": "chunk", "text": "Hello! How can I assist you with the MOE e-Service portal today?"}) + "\n"
+#         yield json.dumps({"type": "chunk", "text": "Hello! How can I assist you with the SFS e-Service portal today?"}) + "\n"
 #         yield json.dumps({"type": "done", "fallback": False, "fallback_type": None, "support_contact": None}) + "\n"
 #         return
     
 #     if intent == "ACCOUNT_INFO":
 #         answer = (
 #             "I can't access or disclose personal account information or sensitive personal data, "
-#             "whether about you or another person. If you're trying to view your own MOE e-Service "
-#             "records, please sign in to the MOE e-Service portal. For someone else's information, "
+#             "whether about you or another person. If you're trying to view your own SFS e-Service "
+#             "records, please sign in to the SFS e-Service portal. For someone else's information, "
 #             "please contact the appropriate person or organisation directly."
 #         )
 #         yield json.dumps({"type": "chunk", "text": answer}) + "\n"

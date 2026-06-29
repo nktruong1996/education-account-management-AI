@@ -88,7 +88,7 @@ def handle_faq(req: FAQRequest) -> FAQResponse:
     
     if intent == "GREETING":
         return FAQResponse(
-            answer="Hello! How can I assist you with the MOE e-Service portal today?",
+            answer="Hello! How can I assist you with the SFS e-Service portal today?",
             fallback=False,
             fallback_type=None,
             support_contact=None,

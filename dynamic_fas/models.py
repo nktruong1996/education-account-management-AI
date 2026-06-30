@@ -2,17 +2,48 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 QuestionStatus = Literal["missing", "existing", "suggested", "pending_update"]
+QuestionType = Literal["text", "textarea", "select"]
 
 class DynamicQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question_id: int = Field(gt=0)
     question_text: str = Field(min_length=1, max_length=500)
     is_required: bool = False
+    description: Optional[str] = Field(default=None, max_length=1000)
+    type: QuestionType = "textarea"
+    options: List[str] = Field(default_factory=list, max_length=100)
 
     @field_validator("question_text")
     @classmethod
     def normalize_question_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        normalized = value.strip() if value else ""
+        return normalized or None
+
+    @field_validator("options")
+    @classmethod
+    def normalize_options(cls, options: List[str]) -> List[str]:
+        normalized: List[str] = []
+        seen = set()
+        for option in options:
+            value = option.strip()
+            key = value.casefold()
+            if value and key not in seen:
+                normalized.append(value)
+                seen.add(key)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_select_options(self):
+        if self.type == "select" and not self.options:
+            raise ValueError("select questions must define at least one option")
+        if self.type != "select" and self.options:
+            self.options = []
+        return self
 
 class DynamicChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -56,6 +87,9 @@ class DynamicQuestionState(BaseModel):
     question_id: int
     question_text: str
     is_required: bool
+    description: Optional[str] = None
+    type: QuestionType = "textarea"
+    options: List[str] = Field(default_factory=list)
     value: Optional[str] = None
     pending_value: Optional[str] = None
     status: QuestionStatus = "missing"

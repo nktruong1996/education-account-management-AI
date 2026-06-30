@@ -1,4 +1,10 @@
-from dynamic_fas.models import DynamicAssistantState, DynamicChatRequest, DynamicProgress, DynamicQuestionState
+from dynamic_fas.models import (
+    DynamicAssistantState,
+    DynamicChatRequest,
+    DynamicProgress,
+    DynamicQuestion,
+    DynamicQuestionState,
+)
 
 sessions: dict[str, DynamicAssistantState] = {}
 
@@ -18,6 +24,39 @@ def get_or_create_state(request: DynamicChatRequest) -> DynamicAssistantState:
     sessions[request.session_id] = state
     return state
 
+def _state_from_question(question: DynamicQuestion) -> DynamicQuestionState:
+    return DynamicQuestionState(
+        question_id=question.question_id,
+        question_text=question.question_text,
+        is_required=question.is_required,
+        description=question.description,
+        type=question.type,
+        options=question.options,
+    )
+
+def _definition_changed(
+    previous: DynamicQuestionState,
+    question: DynamicQuestion,
+) -> bool:
+    return (
+        previous.question_text != question.question_text
+        or previous.type != question.type
+        or previous.options != question.options
+    )
+
+def _normalize_current_answer(question: DynamicQuestion, value: str) -> str:
+    normalized = value.strip()
+    if not normalized or question.type != "select":
+        return normalized
+    return next(
+        (
+            option
+            for option in question.options
+            if option.casefold() == normalized.casefold()
+        ),
+        "",
+    )
+
 def reconcile_state(state: DynamicAssistantState, request: DynamicChatRequest) -> DynamicAssistantState:
     reconciled: dict[str, DynamicQuestionState] = {}
     question_order: list[str] = []
@@ -25,14 +64,20 @@ def reconcile_state(state: DynamicAssistantState, request: DynamicChatRequest) -
     for question in request.questions:
         key = str(question.question_id)
         question_order.append(key)
-        current_answer = request.current_answers.get(key, "").strip()
+        current_answer = _normalize_current_answer(
+            question,
+            request.current_answers.get(key, ""),
+        )
         previous = state.questions.get(key)
 
-        if previous is None or previous.question_text != question.question_text:
-            field = DynamicQuestionState(question_id=question.question_id, question_text=question.question_text, is_required=question.is_required)
+        if previous is None or _definition_changed(previous, question):
+            field = _state_from_question(question)
         else:
             field = previous.model_copy(deep=True)
             field.is_required = question.is_required
+            field.description = question.description
+            field.type = question.type
+            field.options = list(question.options)
 
         if field.status == "pending_update":
             should_adopt_current_answer = (current_answer and current_answer == field.pending_value)

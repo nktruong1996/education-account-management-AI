@@ -1,39 +1,135 @@
 import json
+from typing import Dict, Optional
+
+from config import CHAT_MODEL, client
 from dynamic_fas.models import DynamicQuestion
 from dynamic_fas.prompts import EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_PROMPT
+
 
 def _parse_json(content: str) -> dict:
     normalized = content.strip()
     if normalized.startswith("```"):
-        normalized = normalized.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        normalized = (
+            normalized.removeprefix("```json")
+            .removeprefix("```JSON")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
     return json.loads(normalized)
 
-def extract_answers(message: str, questions: list[DynamicQuestion], pending_question_id: int | None) -> dict[str, str]:
-    question_payload = [{"question_id": q.question_id, "question_text": q.question_text, "is_required": q.is_required} for q in questions]
-    prompt = EXTRACTION_USER_PROMPT.format(questions_json=json.dumps(question_payload, ensure_ascii=False), pending_question_id=pending_question_id, message=message)
+
+def build_question_context(questions: list[DynamicQuestion]) -> str:
+    blocks = []
+    for question in questions:
+        lines = [
+            f"- question_id: {question.question_id}",
+            f"  question_text: {question.question_text}",
+            f"  description: {question.description or ''}",
+            f"  type: {question.type}",
+            f"  required: {question.is_required}",
+        ]
+        if question.type == "select":
+            lines.append(f"  options: {', '.join(question.options)}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def build_empty_shape(questions: list[DynamicQuestion]) -> Dict[str, Optional[str]]:
+    return {str(question.question_id): None for question in questions}
+
+
+def extract_answers(
+    message: str,
+    questions: list[DynamicQuestion],
+    pending_question_id: int | None,
+) -> dict[str, str]:
+    prompt = EXTRACTION_USER_PROMPT.format(
+        questions_context=build_question_context(questions),
+        pending_question_id=pending_question_id,
+        message=message,
+        empty_shape=json.dumps(build_empty_shape(questions), indent=2),
+    )
+
     try:
-        from llm import DEPLOYMENT_NAME, client
         response = client.chat.completions.create(
-            model=DEPLOYMENT_NAME,
-            messages=[{"role": "system", "content": EXTRACTION_SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-            max_completion_tokens=1200,
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=1500,
         )
-        raw_answers = _parse_json(response.choices[0].message.content or "").get("answers", {})
-    except Exception:
+        data = _parse_json(response.choices[0].message.content or "")
+        raw_answers = data.get("answers", data)
+    except Exception as exc:
+        print(f"Dynamic extraction error: {exc!r}")
         return {}
 
-    allowed_ids = {str(q.question_id) for q in questions}
-    answers: dict[str, str] = {}
-    if not isinstance(raw_answers, dict): return answers
+    if not isinstance(raw_answers, dict):
+        return {}
 
-    for question_id, value in raw_answers.items():
-        key = str(question_id)
-        if key in allowed_ids and isinstance(value, str) and value.strip():
-            answers[key] = value.strip()[:4000]
+    question_map = {str(question.question_id): question for question in questions}
+    answers: dict[str, str] = {}
+
+    for raw_question_id, raw_value in raw_answers.items():
+        question_id = str(raw_question_id)
+        question = question_map.get(question_id)
+        if question is None or raw_value is None:
+            continue
+
+        value = str(raw_value).strip()
+        if not value:
+            continue
+
+        if question.type == "select":
+            matched_option = next(
+                (
+                    option
+                    for option in question.options
+                    if option.casefold() == value.casefold()
+                ),
+                None,
+            )
+            if matched_option is None:
+                continue
+            value = matched_option
+
+        answers[question_id] = value[:4000]
+
     return answers
 
+
 def is_positive_confirmation(message: str) -> bool:
-    return message.lower().strip() in {"có", "đồng ý", "xác nhận", "yes", "y", "ok", "confirm"}
+    return message.casefold().strip() in {
+        "có",
+        "đồng ý",
+        "xác nhận",
+        "yes",
+        "y",
+        "yeah",
+        "yep",
+        "sure",
+        "correct",
+        "ok",
+        "okay",
+        "confirm",
+        "please do",
+        "update it",
+    }
+
 
 def is_negative_confirmation(message: str) -> bool:
-    return message.lower().strip() in {"không", "từ chối", "no", "n", "cancel", "reject"}
+    return message.casefold().strip() in {
+        "không",
+        "từ chối",
+        "no",
+        "n",
+        "nope",
+        "incorrect",
+        "cancel",
+        "do not",
+        "don't",
+        "keep the old value",
+        "reject",
+    }

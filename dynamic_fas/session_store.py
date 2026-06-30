@@ -7,9 +7,11 @@ from dynamic_fas.models import (
 )
 
 sessions: dict[str, DynamicAssistantState] = {}
+optional_prompt_shown_sessions: set[str] = set()
 
 def reset_session(session_id: str) -> None:
     sessions.pop(session_id, None)
+    optional_prompt_shown_sessions.discard(session_id)
 
 def _state_from_request(request: DynamicChatRequest) -> DynamicAssistantState:
     state = DynamicAssistantState(fas_scheme_id=request.fas_scheme_id)
@@ -109,6 +111,23 @@ def update_navigation(state: DynamicAssistantState) -> None:
 
 def get_suggested_fields(state: DynamicAssistantState) -> dict[str, str]:
     return {key: field.value for key, field in state.questions.items() if field.status == "suggested" and field.value}
+
+def get_blank_optional_fields(state: DynamicAssistantState) -> list[DynamicQuestionState]:
+    return [
+        state.questions[key]
+        for key in state.question_order
+        if not state.questions[key].is_required and not state.questions[key].value
+    ]
+
+def should_show_optional_prompt(session_id: str, state: DynamicAssistantState) -> bool:
+    if session_id in optional_prompt_shown_sessions:
+        return False
+    if state.pending_question_id is not None or state.pending_update_question_id is not None:
+        return False
+    return bool(get_blank_optional_fields(state))
+
+def mark_optional_prompt_shown(session_id: str) -> None:
+    optional_prompt_shown_sessions.add(session_id)
 
 def get_progress(state: DynamicAssistantState) -> DynamicProgress:
     required_fields = [state.questions[key] for key in state.question_order if state.questions[key].is_required]

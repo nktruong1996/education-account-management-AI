@@ -14,7 +14,11 @@ from dynamic_fas.models import (
     DynamicQuestion,
     DynamicQuestionState,
 )
-from dynamic_fas.session_store import get_or_create_state, sessions
+from dynamic_fas.session_store import (
+    get_or_create_state,
+    optional_prompt_shown_sessions,
+    sessions,
+)
 
 
 def question(
@@ -75,6 +79,7 @@ def multi_question_form() -> list[DynamicQuestion]:
 class DynamicFasTests(unittest.TestCase):
     def setUp(self) -> None:
         sessions.clear()
+        optional_prompt_shown_sessions.clear()
 
     def test_legacy_question_payload_remains_valid(self) -> None:
         legacy = DynamicQuestion(
@@ -855,6 +860,131 @@ class DynamicFasTests(unittest.TestCase):
         )
         self.assertEqual(second.progress.completed, 2)
         self.assertIsNone(second.assistant_state.pending_question_id)
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_required_complete_lists_blank_optional_fields_once(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.return_value = {
+            "201": "My income dropped and I cannot cover tuition fees.",
+            "203": "Unemployed",
+        }
+
+        response = handle_chat(
+            DynamicChatRequest(
+                session_id="session-optional-list",
+                fas_scheme_id=10,
+                message="My income dropped and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertIn("Required questions are complete", response.reply)
+        self.assertIn("Optional questions still blank", response.reply)
+        self.assertIn("Are there any specific medical conditions", response.reply)
+        self.assertEqual(response.progress.completed, 2)
+        self.assertFalse(hasattr(response.assistant_state, "optional_prompt_shown"))
+        generate_reply.assert_not_called()
+
+        extract_answers_mock.return_value = {}
+        second = handle_chat(
+            DynamicChatRequest(
+                session_id="session-optional-list",
+                fas_scheme_id=10,
+                message="okay",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertNotIn("Optional questions still blank", second.reply)
+        generate_reply.assert_called_once()
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_no_optional_list_when_all_optional_fields_answered(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.return_value = {
+            "201": "My income dropped and I cannot cover tuition fees.",
+            "202": "My father has diabetes.",
+            "203": "Unemployed",
+        }
+
+        response = handle_chat(
+            DynamicChatRequest(
+                session_id="session-no-optional-list",
+                fas_scheme_id=10,
+                message="My income dropped, my father has diabetes, and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertNotIn("Optional questions still blank", response.reply)
+        self.assertEqual(response.reply, "Review the suggestions.")
+        generate_reply.assert_called_once()
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_optional_field_can_still_be_filled_after_optional_list(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.side_effect = [
+            {
+                "201": "My income dropped and I cannot cover tuition fees.",
+                "203": "Unemployed",
+            },
+            {"202": "My father has diabetes."},
+        ]
+
+        first = handle_chat(
+            DynamicChatRequest(
+                session_id="session-fill-optional-later",
+                fas_scheme_id=10,
+                message="My income dropped and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+        self.assertIn("Optional questions still blank", first.reply)
+
+        second = handle_chat(
+            DynamicChatRequest(
+                session_id="session-fill-optional-later",
+                fas_scheme_id=10,
+                message="My father has diabetes.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertEqual(
+            second.suggested_fields,
+            {
+                "201": "My income dropped and I cannot cover tuition fees.",
+                "202": "My father has diabetes.",
+                "203": "Unemployed",
+            },
+        )
+        self.assertNotIn("Optional questions still blank", second.reply)
 
     def test_form_help_uses_select_metadata_without_llm(self) -> None:
         select_question = question(

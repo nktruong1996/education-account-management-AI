@@ -19,6 +19,9 @@ services:
     container_name: fastapi_backend
     environment:
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-secret-key}
       - DB_CONNECTION_STRING=DRIVER={ODBC Driver 18 for SQL Server};SERVER=db;DATABASE=AI_assistant;UID=sa;PWD=${SA_PASSWORD};TrustServerCertificate=yes;
     ports:

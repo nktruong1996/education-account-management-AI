@@ -9,8 +9,10 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from config import client, CHAT_MODEL, INTERNAL_API_KEY
-from models import FAQRequest, FAQResponse, HealthResponse, UploadRequest, UploadResponse
+from models import FAQRequest, FAQResponse, HealthResponse, UploadRequest, UploadResponse, ChatRequest, ChatResponse, ResetSessionRequest
 from assistants.faq_v2 import handle_faq, detect_intent
+from dynamic_fas.router import router as dynamic_fas_router
+from services.conversation import handle_chat, reset_session
 # from assistants.faq_v2 import stream_faq
 from retrieval_sql import ingest_document, get_store_stats, get_connection, list_documents, delete_document
 from document_processor import extract_text_from_pdf
@@ -30,6 +32,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(dynamic_fas_router)
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
 
@@ -231,6 +235,19 @@ async def upload_doc(
         chunks_stored=result["chunks_stored"],
         message=f"Ingested {result['chunks_stored']} chunks from '{file.filename}'",
     )
+
+# --- Normal Chat (Form Cố Định) ---
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest):
+    return handle_chat(request)
+
+@app.post("/reset-session")
+def reset(request: ResetSessionRequest):
+    reset_session(request.session_id)
+    return {
+        "message": "Session reset successfully",
+        "session_id": request.session_id,
+    }
 
 # --- Dev runner ---
 if __name__ == "__main__":

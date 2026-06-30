@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, List, Any
 
 # --- Shared ---
 class ChatMessage(BaseModel):
@@ -52,3 +52,29 @@ class HealthResponse(BaseModel):
     model: str
     total_chunks: int = 0
     total_documents: int = 0
+
+# --- Normal Chat (Form Cố Định) ---
+class FieldState(BaseModel):
+    value: Optional[str] = None
+    pending_value: Optional[str] = None
+    status: str = "missing"
+    confidence: str = "none"
+    source: Optional[str] = None
+
+class AssistantState(BaseModel):
+    fields: Dict[str, FieldState]
+    notes: List[str] = []
+    pending_question: Optional[str] = "employment_status"
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+class ChatResponse(BaseModel):
+    reply: str
+    assistant_state: AssistantState
+    suggested_fields: Dict[str, Optional[str]]
+    progress: Dict[str, Any]
+
+class ResetSessionRequest(BaseModel):
+    session_id: str

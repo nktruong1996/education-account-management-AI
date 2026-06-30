@@ -5,6 +5,7 @@ from dynamic_fas.change_detector import detect_changes
 from dynamic_fas.conversation import handle_chat
 from dynamic_fas.conversation_llm import get_fallback_reply
 from dynamic_fas.extraction import extract_answers
+from dynamic_fas.answer_revision import revise_extracted_answers
 from dynamic_fas.form_help import generate_form_help_reply
 from dynamic_fas.message_router import MessageRoute, route_by_rules, route_message
 from dynamic_fas.models import (
@@ -13,7 +14,11 @@ from dynamic_fas.models import (
     DynamicQuestion,
     DynamicQuestionState,
 )
-from dynamic_fas.session_store import get_or_create_state, sessions
+from dynamic_fas.session_store import (
+    get_or_create_state,
+    optional_prompt_shown_sessions,
+    sessions,
+)
 
 
 def question(
@@ -74,6 +79,7 @@ def multi_question_form() -> list[DynamicQuestion]:
 class DynamicFasTests(unittest.TestCase):
     def setUp(self) -> None:
         sessions.clear()
+        optional_prompt_shown_sessions.clear()
 
     def test_legacy_question_payload_remains_valid(self) -> None:
         legacy = DynamicQuestion(
@@ -359,16 +365,19 @@ class DynamicFasTests(unittest.TestCase):
         self.assertEqual(changes[0].new_value, "income DECREASED")
 
     @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Next")
+    @patch("dynamic_fas.conversation.revise_extracted_answers")
     @patch("dynamic_fas.conversation.extract_answers")
     @patch("dynamic_fas.conversation.route_message")
     def test_existing_answer_requires_confirmation_before_update(
         self,
         route_message: Mock,
         extract_answers_mock: Mock,
+        revise_answers_mock: Mock,
         generate_reply: Mock,
     ) -> None:
         route_message.return_value = MessageRoute(category="FORM_FILLING")
         extract_answers_mock.return_value = {"101": "New form value"}
+        revise_answers_mock.return_value = {"101": "New form value"}
         initial_request = DynamicChatRequest(
             session_id="session-update",
             fas_scheme_id=10,
@@ -567,6 +576,243 @@ class DynamicFasTests(unittest.TestCase):
         self.assertIsNone(response.assistant_state.pending_question_id)
         generate_reply.assert_called_once()
 
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_short_new_answer_skips_revision(self, create: Mock) -> None:
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump()
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": "My income dropped and I cannot cover tuition."},
+            user_message="My income dropped and I cannot cover tuition.",
+        )
+
+        self.assertEqual(
+            revised,
+            {"201": "My income dropped and I cannot cover tuition."},
+        )
+        create.assert_not_called()
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_text_field_update_skips_revision(self, create: Mock) -> None:
+        employer_question = DynamicQuestion(
+            question_id=202,
+            question_text="Who is your current employer?",
+            is_required=False,
+            description="Name the company or business where you currently work, if applicable.",
+            type="text",
+        )
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "202": DynamicQuestionState(
+                    **employer_question.model_dump(),
+                    value="KFC",
+                    status="suggested",
+                )
+            },
+            question_order=["202"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[employer_question],
+            answers={"202": "Lotteria"},
+            user_message="I work at Lotteria now.",
+        )
+
+        self.assertEqual(revised, {"202": "Lotteria"})
+        create.assert_not_called()
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_long_new_answer_is_compressed(self, create: Mock) -> None:
+        response = Mock()
+        response.choices = [
+            Mock(
+                message=Mock(
+                    content=(
+                        '{"answer":"My father lost his job, our income dropped, '
+                        'and we cannot cover tuition while also paying household '
+                        'expenses.","changed":true,'
+                        '"reason":"compressed_long_answer"}'
+                    )
+                )
+            )
+        ]
+        create.return_value = response
+        long_answer = (
+            "My father lost his job last month and our income dropped. "
+            "We cannot cover tuition and household expenses. "
+            + "This sentence repeats background details. " * 30
+        )
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump()
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": long_answer},
+            user_message=long_answer,
+        )
+
+        self.assertEqual(
+            revised["201"],
+            (
+                "My father lost his job, our income dropped, and we cannot cover "
+                "tuition while also paying household expenses."
+            ),
+        )
+        create.assert_called_once()
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_existing_answer_adds_new_fact_without_history(self, create: Mock) -> None:
+        response = Mock()
+        response.choices = [
+            Mock(
+                message=Mock(
+                    content=(
+                        '{"answer":"My father lost his job and my mother has '
+                        'medical bills, so we cannot cover tuition.",'
+                        '"changed":true,"reason":"added_new_fact"}'
+                    )
+                )
+            )
+        ]
+        create.return_value = response
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump(),
+                    value="My father lost his job, so we cannot cover tuition.",
+                    status="suggested",
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": "My mother has medical bills."},
+            user_message="Also add that my mother has medical bills.",
+        )
+
+        self.assertEqual(
+            revised["201"],
+            "My father lost his job and my mother has medical bills, so we cannot cover tuition.",
+        )
+        prompt = create.call_args.kwargs["messages"][1]["content"]
+        self.assertIn("Existing field answer:", prompt)
+        self.assertIn("Latest user message:", prompt)
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_explicit_replacement_skips_revision_so_confirmation_can_trigger(self, create: Mock) -> None:
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump(),
+                    value="My father lost his job, so we cannot cover tuition.",
+                    status="suggested",
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": "family income is not enough to cover tuition"},
+            user_message=(
+                "actually change my primary reason for financial assistance "
+                "application to: family income is not enough to cover tuition"
+            ),
+        )
+
+        self.assertEqual(
+            revised,
+            {"201": "family income is not enough to cover tuition"},
+        )
+        create.assert_not_called()
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_existing_answer_deduplicates_repeated_fact(self, create: Mock) -> None:
+        response = Mock()
+        response.choices = [
+            Mock(
+                message=Mock(
+                    content=(
+                        '{"answer":"My father lost his job, so we cannot cover '
+                        'tuition.","changed":false,"reason":"deduplicated"}'
+                    )
+                )
+            )
+        ]
+        create.return_value = response
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump(),
+                    value="My father lost his job, so we cannot cover tuition.",
+                    status="suggested",
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": "My father lost his job."},
+            user_message="Also say my father lost his job.",
+        )
+
+        self.assertEqual(
+            revised["201"],
+            "My father lost his job, so we cannot cover tuition.",
+        )
+
+    @patch("dynamic_fas.answer_revision.client.chat.completions.create")
+    def test_revision_error_keeps_extracted_answer(self, create: Mock) -> None:
+        create.side_effect = RuntimeError("LLM unavailable")
+        state = DynamicAssistantState(
+            fas_scheme_id=10,
+            questions={
+                "201": DynamicQuestionState(
+                    **financial_reason_question().model_dump(),
+                    value="My father lost his job.",
+                    status="suggested",
+                )
+            },
+            question_order=["201"],
+        )
+
+        revised = revise_extracted_answers(
+            state=state,
+            questions=[financial_reason_question()],
+            answers={"201": "My mother has medical bills."},
+            user_message="Also add that my mother has medical bills.",
+        )
+
+        self.assertEqual(revised, {"201": "My mother has medical bills."})
+
     @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Next question.")
     @patch("dynamic_fas.conversation.extract_answers")
     @patch("dynamic_fas.conversation.route_message")
@@ -614,6 +860,131 @@ class DynamicFasTests(unittest.TestCase):
         )
         self.assertEqual(second.progress.completed, 2)
         self.assertIsNone(second.assistant_state.pending_question_id)
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_required_complete_lists_blank_optional_fields_once(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.return_value = {
+            "201": "My income dropped and I cannot cover tuition fees.",
+            "203": "Unemployed",
+        }
+
+        response = handle_chat(
+            DynamicChatRequest(
+                session_id="session-optional-list",
+                fas_scheme_id=10,
+                message="My income dropped and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertIn("Required questions are complete", response.reply)
+        self.assertIn("Optional questions still blank", response.reply)
+        self.assertIn("Are there any specific medical conditions", response.reply)
+        self.assertEqual(response.progress.completed, 2)
+        self.assertFalse(hasattr(response.assistant_state, "optional_prompt_shown"))
+        generate_reply.assert_not_called()
+
+        extract_answers_mock.return_value = {}
+        second = handle_chat(
+            DynamicChatRequest(
+                session_id="session-optional-list",
+                fas_scheme_id=10,
+                message="okay",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertNotIn("Optional questions still blank", second.reply)
+        generate_reply.assert_called_once()
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_no_optional_list_when_all_optional_fields_answered(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.return_value = {
+            "201": "My income dropped and I cannot cover tuition fees.",
+            "202": "My father has diabetes.",
+            "203": "Unemployed",
+        }
+
+        response = handle_chat(
+            DynamicChatRequest(
+                session_id="session-no-optional-list",
+                fas_scheme_id=10,
+                message="My income dropped, my father has diabetes, and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertNotIn("Optional questions still blank", response.reply)
+        self.assertEqual(response.reply, "Review the suggestions.")
+        generate_reply.assert_called_once()
+
+    @patch("dynamic_fas.conversation.generate_assistant_reply", return_value="Review the suggestions.")
+    @patch("dynamic_fas.conversation.extract_answers")
+    @patch("dynamic_fas.conversation.route_message")
+    def test_optional_field_can_still_be_filled_after_optional_list(
+        self,
+        route_message_mock: Mock,
+        extract_answers_mock: Mock,
+        generate_reply: Mock,
+    ) -> None:
+        route_message_mock.return_value = MessageRoute(category="FORM_FILLING")
+        extract_answers_mock.side_effect = [
+            {
+                "201": "My income dropped and I cannot cover tuition fees.",
+                "203": "Unemployed",
+            },
+            {"202": "My father has diabetes."},
+        ]
+
+        first = handle_chat(
+            DynamicChatRequest(
+                session_id="session-fill-optional-later",
+                fas_scheme_id=10,
+                message="My income dropped and I am unemployed.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+        self.assertIn("Optional questions still blank", first.reply)
+
+        second = handle_chat(
+            DynamicChatRequest(
+                session_id="session-fill-optional-later",
+                fas_scheme_id=10,
+                message="My father has diabetes.",
+                questions=multi_question_form(),
+                current_answers={"201": "", "202": "", "203": ""},
+            )
+        )
+
+        self.assertEqual(
+            second.suggested_fields,
+            {
+                "201": "My income dropped and I cannot cover tuition fees.",
+                "202": "My father has diabetes.",
+                "203": "Unemployed",
+            },
+        )
+        self.assertNotIn("Optional questions still blank", second.reply)
 
     def test_form_help_uses_select_metadata_without_llm(self) -> None:
         select_question = question(

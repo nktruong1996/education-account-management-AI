@@ -1,3 +1,4 @@
+from dynamic_fas.answer_revision import revise_extracted_answers
 from dynamic_fas.change_detector import detect_changes
 from dynamic_fas.conversation_llm import generate_assistant_reply
 from dynamic_fas.extraction import (
@@ -15,9 +16,12 @@ from dynamic_fas.models import (
 )
 from dynamic_fas.session_store import (
     get_or_create_state,
+    get_blank_optional_fields,
     get_progress,
     get_suggested_fields,
+    mark_optional_prompt_shown,
     sessions,
+    should_show_optional_prompt,
     update_navigation,
 )
 
@@ -77,6 +81,27 @@ def _apply_extracted_answers(
 
     update_navigation(state)
     return bool(changes)
+
+def _optional_completion_reply(
+    request: DynamicChatRequest,
+    state: DynamicAssistantState,
+) -> str | None:
+    if not should_show_optional_prompt(request.session_id, state):
+        return None
+
+    optional_fields = get_blank_optional_fields(state)
+    mark_optional_prompt_shown(request.session_id)
+    optional_list = "\n".join(
+        f"- {field.question_text}" for field in optional_fields[:5]
+    )
+    more_text = (
+        "\n- ..." if len(optional_fields) > 5 else ""
+    )
+    return (
+        "Required questions are complete. Optional questions still blank:\n"
+        f"{optional_list}{more_text}\n\n"
+        "You can answer any of them, or review and apply the current suggestions."
+    )
 
 def handle_chat(request: DynamicChatRequest) -> DynamicChatResponse:
     state = get_or_create_state(request)
@@ -142,12 +167,22 @@ def handle_chat(request: DynamicChatRequest) -> DynamicChatResponse:
         questions=request.questions,
         pending_question_id=state.pending_question_id,
     )
+    answers = revise_extracted_answers(
+        state=state,
+        questions=request.questions,
+        answers=answers,
+        user_message=routed_message,
+    )
     extracted_any = _apply_extracted_answers(state, answers)
     pending_field = _pending_update_field(state)
 
     # 4. Trả về hỏi confirm hoặc câu hỏi tiếp theo
     if pending_field is not None:
         return _build_response(request, state, _confirmation_reply(pending_field))
+
+    optional_reply = _optional_completion_reply(request, state)
+    if optional_reply is not None:
+        return _build_response(request, state, optional_reply)
 
     reply = generate_assistant_reply(
         state=state,

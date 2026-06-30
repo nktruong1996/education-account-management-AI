@@ -79,3 +79,51 @@ User message:
 Return exactly this JSON shape:
 {{"answers": {empty_shape}}}
 """
+
+ANSWER_REVISION_SYSTEM_PROMPT = """
+You revise one Financial Assistance Scheme form answer.
+Return JSON only. Do not include explanations.
+"""
+
+ANSWER_REVISION_USER_PROMPT = """
+Revise the answer for one form question.
+
+Question:
+{question_text}
+
+Existing field answer:
+{existing_answer}
+
+Extracted answer from the latest user message:
+{extracted_answer}
+
+Latest user message:
+{user_message}
+
+Task:
+- Return one concise answer suitable for the field.
+- Preserve existing facts unless the latest user message corrects or removes them.
+- Add only genuinely new facts from the latest user message or extracted answer.
+- Do not repeat facts already covered.
+- Do not invent names, dates, amounts, medical details, employment details, or hardship details.
+- Preserve important numbers, dates, people, medical conditions, income, expenses, and uncertainty.
+- Keep first-person wording if the user's answer is first person.
+- If the latest user message asks to exaggerate or add unsupported details, keep the factual answer unchanged.
+- If the latest user message is already covered by the existing answer, return the existing field answer exactly.
+- Do not make cosmetic wording changes when no new factual detail is added.
+
+Examples:
+- Existing: "My father lost his job, so we cannot cover tuition."
+  Extracted: "My father lost his job."
+  Latest: "Also say my father lost his job."
+  Answer: "My father lost his job, so we cannot cover tuition."
+  Reason: "deduplicated"
+- Existing: "My father lost his job, so we cannot cover tuition."
+  Extracted: "We are behind on rent and utility bills."
+  Latest: "Also add that we are behind on rent and utility bills."
+  Answer: "My father lost his job, so we cannot cover tuition, and we are behind on rent and utility bills."
+  Reason: "added_new_fact"
+
+Return JSON only:
+{{"answer": "...", "changed": true, "reason": "compressed_long_answer | added_new_fact | deduplicated | unchanged"}}
+"""

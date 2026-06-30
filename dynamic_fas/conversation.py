@@ -1,3 +1,4 @@
+from dynamic_fas.answer_revision import revise_extracted_answers
 from dynamic_fas.change_detector import detect_changes
 from dynamic_fas.conversation_llm import generate_assistant_reply
 from dynamic_fas.extraction import (
@@ -141,6 +142,12 @@ def handle_chat(request: DynamicChatRequest) -> DynamicChatResponse:
         message=routed_message,
         questions=request.questions,
         pending_question_id=state.pending_question_id,
+    )
+    answers = revise_extracted_answers(
+        state=state,
+        questions=request.questions,
+        answers=answers,
+        user_message=routed_message,
     )
     extracted_any = _apply_extracted_answers(state, answers)
     pending_field = _pending_update_field(state)

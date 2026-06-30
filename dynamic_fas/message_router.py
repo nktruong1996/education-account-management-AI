@@ -12,8 +12,11 @@ RouteCategory = Literal[
     "GREETING",
     "FORM_FILLING",
     "FORM_HELP",
+    "EXAMPLE_REQUEST",
+    "SMALL_TALK",
     "FAQ_REDIRECT",
     "OFF_TOPIC",
+    "UNCLEAR",
 ]
 
 GREETING_MESSAGES = {
@@ -43,6 +46,7 @@ GENERAL_HELP_MESSAGES = {
 class MessageRoute(BaseModel):
     category: RouteCategory
     reply: str | None = None
+    confidence: Literal["high", "medium", "low"] = "high"
 
 
 def build_router_reply(category: RouteCategory) -> str:
@@ -56,6 +60,17 @@ def build_router_reply(category: RouteCategory) -> str:
             "I can explain what to enter for the configured questions. "
             "You can review every suggestion before applying it."
         )
+    if category == "EXAMPLE_REQUEST":
+        return (
+            "I can't make up an answer for you because the application should "
+            "reflect your real circumstances. I can show the kind of information "
+            "people usually include."
+        )
+    if category == "SMALL_TALK":
+        return (
+            "Got it. For this form, I'll only use information that directly "
+            "answers the FAS questions."
+        )
     if category == "FAQ_REDIRECT":
         return (
             "That question is better handled by the FAQ assistant. "
@@ -65,6 +80,11 @@ def build_router_reply(category: RouteCategory) -> str:
         return (
             "I can only help with completing the FAS form. "
             "Please ask about the form or provide information for the application."
+        )
+    if category == "UNCLEAR":
+        return (
+            "Just to check, are you asking what this question means, or are you "
+            "giving an answer you want me to suggest for the form?"
         )
     return ""
 
@@ -116,24 +136,6 @@ def route_by_rules(message: str) -> MessageRoute | None:
             )
         return MessageRoute(category="FORM_FILLING")
 
-    form_help_patterns = {
-        "what type of information",
-        "what information",
-        "what should i put",
-        "what should i write",
-        "what do i put",
-        "how do i fill",
-        "how should i fill",
-        "what does",
-        "why do you need",
-        "can i edit",
-        "how does this autofill work",
-    }
-    if any(pattern in normalized for pattern in form_help_patterns):
-        return MessageRoute(
-            category="FORM_HELP",
-            reply=build_router_reply("FORM_HELP"),
-        )
     return None
 
 
@@ -166,16 +168,25 @@ def route_message(message: str) -> MessageRoute:
             )
         data = json.loads(content)
         category = data.get("category", "FORM_FILLING")
+        confidence = data.get("confidence", "high")
+        if confidence not in {"high", "medium", "low"}:
+            confidence = "high"
         if category in {
             "GREETING",
             "FORM_FILLING",
             "FORM_HELP",
+            "EXAMPLE_REQUEST",
+            "SMALL_TALK",
             "FAQ_REDIRECT",
             "OFF_TOPIC",
+            "UNCLEAR",
         }:
+            if confidence == "low":
+                category = "UNCLEAR"
             return MessageRoute(
                 category=category,
                 reply=build_router_reply(category),
+                confidence=confidence,
             )
     except Exception as exc:
         print(f"Dynamic message routing error: {exc!r}")

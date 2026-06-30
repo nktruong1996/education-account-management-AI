@@ -5,7 +5,7 @@ from dynamic_fas.extraction import (
     is_negative_confirmation,
     is_positive_confirmation,
 )
-from dynamic_fas.form_help import generate_form_help_reply
+from dynamic_fas.form_help import generate_example_request_reply, generate_form_help_reply
 from dynamic_fas.message_router import route_message, strip_leading_greeting
 from dynamic_fas.models import (
     DynamicAssistantState,
@@ -117,6 +117,14 @@ def handle_chat(request: DynamicChatRequest) -> DynamicChatResponse:
 
     if route.category == "FORM_HELP":
         reply = generate_form_help_reply(
+            state=state,
+            questions=request.questions,
+            message=routed_message,
+        )
+        return _build_response(request, state, reply)
+
+    if route.category == "EXAMPLE_REQUEST":
+        reply = generate_example_request_reply(
             state=state,
             questions=request.questions,
             message=routed_message,

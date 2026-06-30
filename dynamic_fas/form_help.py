@@ -83,6 +83,56 @@ def build_general_help_reply(state: DynamicAssistantState) -> str:
     )
 
 
+def _question_for_help_context(
+    state: DynamicAssistantState,
+    questions: list[DynamicQuestion],
+    message: str,
+) -> DynamicQuestion | None:
+    referenced_question = find_referenced_question(questions, message)
+    if referenced_question is not None:
+        return referenced_question
+    if state.pending_question_id is not None:
+        return next(
+            (
+                question
+                for question in questions
+                if question.question_id == state.pending_question_id
+            ),
+            None,
+        )
+    return questions[0] if len(questions) == 1 else None
+
+
+def generate_example_request_reply(
+    state: DynamicAssistantState,
+    questions: list[DynamicQuestion],
+    message: str,
+) -> str:
+    question = _question_for_help_context(state, questions, message)
+    if question is None:
+        return (
+            "I can't make up an answer for you because this application should "
+            "reflect your real circumstances. I can still show examples of the "
+            "kind of information people usually include if you point me to a question."
+        )
+
+    if question.type == "select":
+        return (
+            "I can't choose an answer for you because this application should "
+            f"reflect your real circumstances. For \"{question.question_text}\", "
+            f"choose the option that is true for you: {', '.join(question.options)}."
+        )
+
+    return (
+        "I can't make up your actual answer because this application should "
+        "reflect your real circumstances. For "
+        f"\"{question.question_text}\", truthful examples often mention reduced "
+        "household income, difficulty paying school fees, medical expenses, job "
+        "loss, reduced working hours, or other real household circumstances. "
+        "Use only what is true for your family."
+    )
+
+
 def generate_form_help_reply(
     state: DynamicAssistantState,
     questions: list[DynamicQuestion],
@@ -94,6 +144,10 @@ def generate_form_help_reply(
 
     if is_general_help_message(message):
         return build_general_help_reply(state)
+
+    contextual_question = _question_for_help_context(state, questions, message)
+    if contextual_question is not None:
+        return build_metadata_help_reply(contextual_question)
 
     prompt = f"""
 The user is asking for help with a dynamic FAS form.

@@ -36,7 +36,7 @@ class DynamicFasUiClientTests(unittest.TestCase):
     @patch("dynamic_fas.ui_client.requests.post")
     def test_reset_calls_dynamic_fas_reset_endpoint(self, post: Mock) -> None:
         response = Mock(ok=True)
-        response.json.return_value = {"message": "reset", "session_id": "fas-10-test"}
+        response.json.return_value = {"session_id": "fas-10-test", "reset": True}
         post.return_value = response
 
         result = reset_dynamic_fas_session(
@@ -45,6 +45,8 @@ class DynamicFasUiClientTests(unittest.TestCase):
         )
 
         self.assertEqual(result["session_id"], "fas-10-test")
+        self.assertTrue(result["reset"])
+        self.assertNotIn("message", result)
         post.assert_called_once_with(
             "http://127.0.0.1:8001/dynamic-fas/reset-session",
             json={"session_id": "fas-10-test"},

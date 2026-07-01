@@ -17,6 +17,6 @@ def chat(request: DynamicChatRequest):
 def reset(request: DynamicResetSessionRequest):
     reset_session(request.session_id)
     return {
-        "message": "Dynamic FAS session reset successfully",
         "session_id": request.session_id,
+        "reset": True,
     }

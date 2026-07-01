@@ -15,8 +15,10 @@ from dynamic_fas.models import (
     DynamicQuestionState,
 )
 from dynamic_fas.session_store import (
+    cleanup_expired_sessions,
     get_or_create_state,
     optional_prompt_shown_sessions,
+    session_last_accessed,
     sessions,
 )
 
@@ -80,6 +82,7 @@ class DynamicFasTests(unittest.TestCase):
     def setUp(self) -> None:
         sessions.clear()
         optional_prompt_shown_sessions.clear()
+        session_last_accessed.clear()
 
     def test_legacy_question_payload_remains_valid(self) -> None:
         legacy = DynamicQuestion(
@@ -91,6 +94,22 @@ class DynamicFasTests(unittest.TestCase):
         self.assertEqual(legacy.type, "textarea")
         self.assertIsNone(legacy.description)
         self.assertEqual(legacy.options, [])
+
+    def test_session_store_removes_expired_dynamic_fas_sessions(self) -> None:
+        sessions["expired"] = DynamicAssistantState(fas_scheme_id=10)
+        sessions["active"] = DynamicAssistantState(fas_scheme_id=10)
+        optional_prompt_shown_sessions.update({"expired", "active"})
+        session_last_accessed["expired"] = 100.0
+        session_last_accessed["active"] = 150.0
+
+        cleanup_expired_sessions(now=200.0, ttl_seconds=60)
+
+        self.assertNotIn("expired", sessions)
+        self.assertNotIn("expired", optional_prompt_shown_sessions)
+        self.assertNotIn("expired", session_last_accessed)
+        self.assertIn("active", sessions)
+        self.assertIn("active", optional_prompt_shown_sessions)
+        self.assertIn("active", session_last_accessed)
 
     @patch("dynamic_fas.message_router.client.chat.completions.create")
     def test_short_greeting_uses_deterministic_route(self, create: Mock) -> None:

@@ -1,3 +1,5 @@
+import time
+
 from dynamic_fas.models import (
     DynamicAssistantState,
     DynamicChatRequest,
@@ -6,24 +8,53 @@ from dynamic_fas.models import (
     DynamicQuestionState,
 )
 
+DEFAULT_SESSION_TTL_SECONDS = 30 * 60
+
 sessions: dict[str, DynamicAssistantState] = {}
 optional_prompt_shown_sessions: set[str] = set()
+session_last_accessed: dict[str, float] = {}
+
+def cleanup_expired_sessions(
+    *,
+    now: float | None = None,
+    ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS,
+) -> None:
+    if ttl_seconds <= 0:
+        return
+
+    current_time = time.monotonic() if now is None else now
+    expired_session_ids = [
+        session_id
+        for session_id, last_accessed in session_last_accessed.items()
+        if current_time - last_accessed > ttl_seconds
+    ]
+
+    for session_id in expired_session_ids:
+        sessions.pop(session_id, None)
+        optional_prompt_shown_sessions.discard(session_id)
+        session_last_accessed.pop(session_id, None)
 
 def reset_session(session_id: str) -> None:
     sessions.pop(session_id, None)
     optional_prompt_shown_sessions.discard(session_id)
+    session_last_accessed.pop(session_id, None)
+
+def mark_session_active(session_id: str) -> None:
+    session_last_accessed[session_id] = time.monotonic()
 
 def _state_from_request(request: DynamicChatRequest) -> DynamicAssistantState:
     state = DynamicAssistantState(fas_scheme_id=request.fas_scheme_id)
     return reconcile_state(state, request)
 
 def get_or_create_state(request: DynamicChatRequest) -> DynamicAssistantState:
+    cleanup_expired_sessions()
     state = sessions.get(request.session_id)
     if state is None or state.fas_scheme_id != request.fas_scheme_id:
         state = _state_from_request(request)
     else:
         state = reconcile_state(state, request)
     sessions[request.session_id] = state
+    mark_session_active(request.session_id)
     return state
 
 def _state_from_question(question: DynamicQuestion) -> DynamicQuestionState:

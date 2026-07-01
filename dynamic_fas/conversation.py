@@ -20,6 +20,7 @@ from dynamic_fas.session_store import (
     get_progress,
     get_suggested_fields,
     mark_optional_prompt_shown,
+    mark_session_active,
     sessions,
     should_show_optional_prompt,
     update_navigation,
@@ -31,6 +32,7 @@ def _build_response(
     reply: str,
 ) -> DynamicChatResponse:
     sessions[request.session_id] = state
+    mark_session_active(request.session_id)
     return DynamicChatResponse(
         reply=reply,
         assistant_state=state,
